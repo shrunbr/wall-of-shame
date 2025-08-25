@@ -38,6 +38,7 @@ export default function App() {
   const [grouped, setGrouped] = useState({});
   const [selectedSrc, setSelectedSrc] = useState(null);
   const [open, setOpen] = useState(false);
+  const [geo, setGeo] = useState({}); // { ip: { country: 'US', flag: '🇺🇸' } }
 
   useEffect(() => {
     axios.get('/api/logs').then(res => {
@@ -48,6 +49,32 @@ export default function App() {
   useEffect(() => {
     setGrouped(groupLogsBySrcHost(logs));
   }, [logs]);
+
+  // Fetch GeoIP data for new source IPs
+  useEffect(() => {
+    let aborted = false;
+    const fetchGeo = async (ip) => {
+      try {
+        // Skip private / unknown IPs
+        if (!/^(?:\d{1,3}\.){3}\d{1,3}$/.test(ip)) return; // naive IPv4 check
+        if (geo[ip]) return;
+        // Use ipapi.co free endpoint; falls back silently on error
+        const res = await fetch(`https://ipapi.co/${ip}/json/`);
+        if (!res.ok) throw new Error('geo failed');
+        const data = await res.json();
+        if (aborted) return;
+        const cc = data.country; // e.g. "US"
+        const flag = cc && cc.length === 2 ? cc
+          .toUpperCase()
+          .replace(/./g, ch => String.fromCodePoint(127397 + ch.charCodeAt(0))) : null;
+        setGeo(prev => ({ ...prev, [ip]: { country: cc || '??', flag: flag || '🏳️' } }));
+      } catch (e) {
+        if (!aborted) setGeo(prev => ({ ...prev, [ip]: { country: '??', flag: '🏳️' } }));
+      }
+    };
+    Object.keys(grouped).forEach(ip => fetchGeo(ip));
+    return () => { aborted = true; };
+  }, [grouped, geo]);
 
   const handleOpen = src => {
     setSelectedSrc(src);
@@ -69,21 +96,29 @@ export default function App() {
           Wall of Shame Logs
         </Typography>
         <List>
-          {sortedSrcs.map(src => (
-            <ListItem key={src} secondaryAction={
-              <IconButton edge="end" onClick={() => handleOpen(src)}>
-                <InfoIcon color="primary" />
-              </IconButton>
-            }>
-              <ListItemText
-                primary={<>
-                  <Badge badgeContent={grouped[src].length} color="secondary" sx={{ mr: 2 }} />
-                  <span style={{ fontWeight: 600 }}>{src}</span>
-                </>}
-                secondary={`Most recent: ${grouped[src][0]?.utc_time || 'N/A'}`}
-              />
-            </ListItem>
-          ))}
+          {sortedSrcs.map(src => {
+            const meta = geo[src];
+            return (
+              <ListItem key={src} secondaryAction={
+                <IconButton edge="end" onClick={() => handleOpen(src)}>
+                  <InfoIcon color="primary" />
+                </IconButton>
+              }>
+                <ListItemText
+                  primary={<>
+                    <Badge badgeContent={grouped[src].length} color="secondary" sx={{ mr: 2 }} />
+                    <a href={`https://bgp.he.net/ip/${src}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600, textDecoration: 'none', color: '#1976d2' }}>
+                      {src}
+                    </a>
+                    <span style={{ marginLeft: 8 }} title={meta?.country || 'Loading'}>
+                      {meta ? meta.flag : '…'}
+                    </span>
+                  </>}
+                  secondary={`Most recent: ${grouped[src][0]?.utc_time || 'N/A'}`}
+                />
+              </ListItem>
+            );
+          })}
         </List>
       </Paper>
       <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
