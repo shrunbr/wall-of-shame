@@ -24,6 +24,14 @@ services:
       - "8081:8081"
     depends_on:
       - postgres
+  
+  cloudflared:
+    container_name: wos-cloudflared
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - app
 
 volumes:
   postgres-data:
