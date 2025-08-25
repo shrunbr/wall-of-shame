@@ -324,67 +324,79 @@ def get_top_stats():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Combine top stats from source_details
         cur.execute("""
-            (SELECT 'src_host' as type, src_host as value, COUNT(*) as cnt
-             FROM source_details
-             WHERE src_host IS NOT NULL AND src_host != ''
-             GROUP BY src_host
-             ORDER BY cnt DESC
-             LIMIT 1)
-            UNION ALL
-            (SELECT 'src_asnum', src_asnum::text, COUNT(*) as cnt
-             FROM source_details
-             WHERE src_asnum IS NOT NULL
-             GROUP BY src_asnum
-             ORDER BY cnt DESC
-             LIMIT 1)
-            UNION ALL
-            (SELECT 'src_isp', src_isp, COUNT(*) as cnt
-             FROM source_details
-             WHERE src_isp IS NOT NULL AND src_isp != ''
-             GROUP BY src_isp
-             ORDER BY cnt DESC
-             LIMIT 1)
-            UNION ALL
-            (SELECT 'src_country', src_country, COUNT(*) as cnt
-             FROM source_details
-             WHERE src_country IS NOT NULL AND src_country != ''
-             GROUP BY src_country
-             ORDER BY cnt DESC
-             LIMIT 1)
+            WITH
+            top_src_host AS (
+                SELECT src_host AS value, SUM(times_seen) AS cnt
+                FROM source_details
+                WHERE src_host IS NOT NULL AND src_host != ''
+                GROUP BY src_host
+                ORDER BY cnt DESC, value ASC
+                LIMIT 1
+            ),
+            top_asnum AS (
+                SELECT src_asnum::text AS value, SUM(times_seen) AS cnt
+                FROM source_details
+                WHERE src_asnum IS NOT NULL
+                GROUP BY src_asnum
+                ORDER BY cnt DESC, value ASC
+                LIMIT 1
+            ),
+            top_isp AS (
+                SELECT src_isp AS value, SUM(times_seen) AS cnt
+                FROM source_details
+                WHERE src_isp IS NOT NULL AND src_isp != ''
+                GROUP BY src_isp
+                ORDER BY cnt DESC, value ASC
+                LIMIT 1
+            ),
+            top_country AS (
+                SELECT src_country AS value, SUM(times_seen) AS cnt
+                FROM source_details
+                WHERE src_country IS NOT NULL AND src_country != ''
+                GROUP BY src_country
+                ORDER BY cnt DESC, value ASC
+                LIMIT 1
+            )
+            SELECT
+                (SELECT value FROM top_src_host) AS top_src,
+                (SELECT value FROM top_asnum) AS top_as,
+                (SELECT value FROM top_isp) AS top_isp,
+                (SELECT value FROM top_country) AS top_country
         """)
-        top_stats = {row['type']: row['value'] for row in cur.fetchall()}
+        row = cur.fetchone()
+        top_stats = dict(row) if row else {}
 
-        # Combine top username and password from webhook_logs
+        # Top username and password from webhook_logs
         cur.execute("""
-            (SELECT 'logdata_username' as type, logdata_username as value, COUNT(*) as cnt
-             FROM webhook_logs
-             WHERE logdata_username IS NOT NULL AND logdata_username != ''
-             GROUP BY logdata_username
-             ORDER BY cnt DESC
-             LIMIT 1)
-            UNION ALL
-            (SELECT 'logdata_password', logdata_password, COUNT(*) as cnt
-             FROM webhook_logs
-             WHERE logdata_password IS NOT NULL AND logdata_password != ''
-             GROUP BY logdata_password
-             ORDER BY cnt DESC
-             LIMIT 1)
+            WITH
+            top_username AS (
+                SELECT logdata_username AS value, COUNT(*) AS cnt
+                FROM webhook_logs
+                WHERE logdata_username IS NOT NULL AND logdata_username != ''
+                GROUP BY logdata_username
+                ORDER BY cnt DESC, value ASC
+                LIMIT 1
+            ),
+            top_password AS (
+                SELECT logdata_password AS value, COUNT(*) AS cnt
+                FROM webhook_logs
+                WHERE logdata_password IS NOT NULL AND logdata_password != ''
+                GROUP BY logdata_password
+                ORDER BY cnt DESC, value ASC
+                LIMIT 1
+            )
+            SELECT
+                (SELECT value FROM top_username) AS top_username,
+                (SELECT value FROM top_password) AS top_password
         """)
-        for row in cur.fetchall():
-            top_stats[row['type']] = row['value']
+        row = cur.fetchone()
+        if row:
+            top_stats.update(row)
 
         cur.close()
         conn.close()
-        return jsonify({
-            'top_src': top_stats.get('src_host'),
-            'top_as': top_stats.get('src_asnum'),
-            'top_isp': top_stats.get('src_isp'),
-            'top_country': top_stats.get('src_country'),
-            'top_username': top_stats.get('logdata_username'),
-            'top_password': top_stats.get('logdata_password')
-        })
+        return jsonify(top_stats)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
