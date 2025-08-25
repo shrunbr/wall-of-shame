@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Pagination, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 import axios from 'axios';
 import {
   Box,
@@ -41,6 +42,8 @@ export default function App() {
   const [geo, setGeo] = useState({}); // { ip: { country: 'US', flag: '🇺🇸' } }
   const [srcDetails, setSrcDetails] = useState(null); // detailed geo/AS info for selectedSrc
   const [srcDetailsLoading, setSrcDetailsLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   useEffect(() => {
     axios.get('/api/logs').then(res => {
@@ -115,6 +118,18 @@ export default function App() {
     return new Date(bTime) - new Date(aTime);
   });
 
+  // Pagination logic
+  const totalPages = Math.ceil(sortedSrcs.length / rowsPerPage) || 1;
+  const pagedSrcs = sortedSrcs.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+
+  const handlePageChange = (event, value) => {
+    setPage(value);
+  };
+  const handleRowsPerPageChange = (event) => {
+    setRowsPerPage(Number(event.target.value));
+    setPage(1);
+  };
+
   return (
     <Box sx={{ p: 4, background: 'linear-gradient(135deg, #232526 0%, #414345 100%)', minHeight: '100vh' }}>
       <Paper elevation={6} sx={{ maxWidth: 600, mx: 'auto', p: 3, borderRadius: 4, background: 'rgba(255,255,255,0.95)' }}>
@@ -122,7 +137,7 @@ export default function App() {
           Wall of Shame Logs
         </Typography>
         <List>
-          {sortedSrcs.map(src => {
+          {pagedSrcs.map(src => {
             const meta = geo[src];
             return (
               <ListItem key={src} secondaryAction={
@@ -146,6 +161,31 @@ export default function App() {
             );
           })}
         </List>
+        {/* Pagination controls */}
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, justifyContent: 'space-between' }}>
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel id="rows-per-page-label">Per page</InputLabel>
+            <Select
+              labelId="rows-per-page-label"
+              value={rowsPerPage}
+              label="Per page"
+              onChange={handleRowsPerPageChange}
+            >
+              {[10, 25, 50, 100].map(opt => (
+                <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Pagination
+            count={totalPages}
+            page={page}
+            onChange={handlePageChange}
+            color="primary"
+            shape="rounded"
+            showFirstButton
+            showLastButton
+          />
+        </Box>
       </Paper>
       <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
         <DialogTitle>Logs for {selectedSrc}</DialogTitle>
