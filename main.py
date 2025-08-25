@@ -272,6 +272,49 @@ def get_logs():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# API endpoint for source details by IP
+@app.route('/api/source_details/<ip>', methods=['GET'])
+def get_source_details(ip):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM source_details WHERE src_host = %s", (ip,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row:
+            return jsonify(row)
+        else:
+            return jsonify({'error': 'Not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/source_details/batch', methods=['POST'])
+def get_source_details_batch():
+    try:
+        data = request.get_json(force=True)
+        ips = data.get('ips', [])
+        if not isinstance(ips, list) or not ips:
+            return jsonify({})
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Only select needed columns for geo/country/flag
+        cur.execute("""
+            SELECT src_host, src_countrycode
+            FROM source_details
+            WHERE src_host = ANY(%s)
+        """, (ips,))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        # Map: ip -> row (or None)
+        result = {ip: None for ip in ips}
+        for row in rows:
+            result[row['src_host']] = row
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({}), 500
+
 # Serve React build
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
