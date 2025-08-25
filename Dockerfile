@@ -36,4 +36,4 @@ ENV FLASK_RUN_HOST=0.0.0.0
 ENV FLASK_RUN_PORT=8081
 
 # Start the app
-CMD ["python", "main.py"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8081", "main:app", "--workers", "2", "--threads", "2", "--log-level", "info"]
