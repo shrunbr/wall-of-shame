@@ -317,6 +317,63 @@ def get_source_details_batch():
     except Exception as e:
         return jsonify({}), 500
 
+# API endpoint for top stats (source IP, AS number, ISP, country)
+@app.route('/api/topstats', methods=['GET'])
+def get_top_stats():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Top source IP from webhook_logs
+        cur.execute("""
+            SELECT src_host, COUNT(*) as cnt
+            FROM webhook_logs
+            WHERE src_host IS NOT NULL AND src_host != ''
+            GROUP BY src_host
+            ORDER BY cnt DESC
+            LIMIT 1
+        """)
+        top_src = cur.fetchone()
+        # Top AS number from source_details
+        cur.execute("""
+            SELECT src_asnum, COUNT(*) as cnt
+            FROM source_details
+            WHERE src_asnum IS NOT NULL
+            GROUP BY src_asnum
+            ORDER BY cnt DESC
+            LIMIT 1
+        """)
+        top_as = cur.fetchone()
+        # Top ISP from source_details
+        cur.execute("""
+            SELECT src_isp, COUNT(*) as cnt
+            FROM source_details
+            WHERE src_isp IS NOT NULL AND src_isp != ''
+            GROUP BY src_isp
+            ORDER BY cnt DESC
+            LIMIT 1
+        """)
+        top_isp = cur.fetchone()
+        # Top country from source_details
+        cur.execute("""
+            SELECT src_countrycode, COUNT(*) as cnt
+            FROM source_details
+            WHERE src_countrycode IS NOT NULL AND src_countrycode != ''
+            GROUP BY src_countrycode
+            ORDER BY cnt DESC
+            LIMIT 1
+        """)
+        top_country = cur.fetchone()
+        cur.close()
+        conn.close()
+        return jsonify({
+            'top_src': top_src['src_host'] if top_src else None,
+            'top_as': top_as['src_asnum'] if top_as else None,
+            'top_isp': top_isp['src_isp'] if top_isp else None,
+            'top_country': top_country['src_countrycode'] if top_country else None
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # Serve React build
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
