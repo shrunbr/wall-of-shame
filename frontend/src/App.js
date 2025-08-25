@@ -141,7 +141,7 @@ export default function App() {
 
   return (
   <Box sx={{ p: 4, background: 'linear-gradient(135deg, #232526 0%, #414345 100%)', minHeight: '100vh', display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-  <Paper elevation={6} sx={{ maxWidth: 600, mx: 'auto', p: 3, borderRadius: 4, background: 'rgba(255,255,255,0.95)', flex: '1 0 auto' }}>
+  <Paper elevation={6} sx={{ width: 600, maxWidth: '100%', mx: 'auto', p: 3, borderRadius: 4, background: 'rgba(255,255,255,0.95)', flex: '1 0 auto' }}>
         <Typography variant="h4" fontWeight={700} gutterBottom align="center" color="primary">
           Wall of Shame Logs
         </Typography>
@@ -264,8 +264,6 @@ export default function App() {
           <GitHubIcon size={28} />
         </a>
         <span style={{ marginLeft: 8, fontSize: 14 }}>
-          <br />
-          Made with <span role="img" aria-label="heart">❤️</span> in Wisconsin.
           <br />
           Source IP details provided by <a href="https://ip-api.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'none' }}>ip-api.com</a>
         </span>
