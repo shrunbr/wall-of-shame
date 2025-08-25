@@ -218,6 +218,8 @@ def webhook():
 
     # Insert into database
     try:
+        if data.get("src_host") == "":
+            return jsonify({"status": "error", "message": f"src_host is not defined."}), 400
         conn = get_db_connection()
         cur = conn.cursor()
         logdata = data.get("logdata", {})
@@ -325,4 +327,4 @@ def serve_react(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8081)
