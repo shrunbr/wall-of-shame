@@ -85,7 +85,7 @@ export default function App() {
         // Compute flag for each
         const geoWithFlag = {};
         for (const [ip, row] of Object.entries(data)) {
-          const cc = row && row.src_countrycode;
+          const cc = row && row.src_isocountrycode;
           let flag = '🏳️';
           if (cc && cc.length === 2 && /^[A-Z]{2}$/i.test(cc)) {
             const up = cc.toUpperCase();
@@ -181,7 +181,6 @@ export default function App() {
               }>
                 <ListItemText
                   primary={<>
-                    <Badge badgeContent={grouped[src].length} color="secondary" sx={{ mr: 2 }} />
                     <a href={`https://bgp.he.net/ip/${src}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600, textDecoration: 'none', color: '#1976d2' }}>
                       {src}
                     </a>
@@ -255,7 +254,7 @@ export default function App() {
                   <TableRow><TableCell>First Seen</TableCell><TableCell>{srcDetails.first_seen}</TableCell></TableRow>
                   <TableRow><TableCell>Last Seen</TableCell><TableCell>{srcDetails.last_seen}</TableCell></TableRow>
                   <TableRow><TableCell>Times Seen</TableCell><TableCell>{srcDetails.times_seen}</TableCell></TableRow>
-                  <TableRow><TableCell>Country</TableCell><TableCell>{srcDetails.src_countrycode} {srcDetails.src_countrycode ? String.fromCodePoint(127397 + srcDetails.src_countrycode.charCodeAt(0)) + String.fromCodePoint(127397 + srcDetails.src_countrycode.charCodeAt(1)) : ''}</TableCell></TableRow>
+                  <TableRow><TableCell>Country</TableCell><TableCell>{srcDetails.src_country} {srcDetails.src_isocountrycode ? String.fromCodePoint(127397 + srcDetails.src_isocountrycode.charCodeAt(0)) + String.fromCodePoint(127397 + srcDetails.src_isocountrycode.charCodeAt(1)) : ''}</TableCell></TableRow>
                   <TableRow><TableCell>Region</TableCell><TableCell>{srcDetails.src_regionname} ({srcDetails.src_region})</TableCell></TableRow>
                   <TableRow><TableCell>City</TableCell><TableCell>{srcDetails.src_city}</TableCell></TableRow>
                   <TableRow><TableCell>ZIP</TableCell><TableCell>{srcDetails.src_zip}</TableCell></TableRow>
@@ -311,6 +310,8 @@ export default function App() {
           <GitHubIcon size={28} />
         </a>
         <span style={{ marginLeft: 8, fontSize: 14 }}>
+          <br />
+          Check out my other stuff on <a href="https://github.com/shrunbr" target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'none' }}>GitHub</a>
           <br />
           Source IP details provided by <a href="https://ip-api.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'none' }}>ip-api.com</a>
         </span>
