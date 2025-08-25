@@ -116,13 +116,13 @@ def _insert_geo_row(conn, base, geo):
         cur.execute("""
             INSERT INTO source_details (
                 first_seen, last_seen, times_seen,
-                src_host, src_countrycode, src_region, src_regionname, src_city, src_zip,
+                src_host, src_country, src_isocountrycode, src_region, src_regionname, src_city, src_zip,
                 src_latitude, src_longitude, src_timezone,
                 src_isp, src_org, src_asnum, src_asorg, src_reversedns,
                 src_mobile, src_proxy, src_hosting
             ) VALUES (
                 %(first_seen)s, %(last_seen)s, %(times_seen)s,
-                %(src_host)s, %(src_countrycode)s, %(src_region)s, %(src_regionname)s, %(src_city)s, %(src_zip)s,
+                %(src_host)s, %(src_country)s, %(src_isocountrycode)s, %(src_region)s, %(src_regionname)s, %(src_city)s, %(src_zip)s,
                 %(src_latitude)s, %(src_longitude)s, %(src_timezone)s,
                 %(src_isp)s, %(src_org)s, %(src_asnum)s, %(src_asorg)s, %(src_reversedns)s,
                 %(src_mobile)s, %(src_proxy)s, %(src_hosting)s
@@ -136,7 +136,8 @@ def _insert_geo_row(conn, base, geo):
             "last_seen": ts,
             "times_seen": 1,
             "src_host": base.get("src_host"),
-            "src_countrycode": geo.get("countryCode") if geo else None,
+            "src_country": geo.get("country") if geo else None,
+            "src_isocountrycode": geo.get("countryCode") if geo else None,
             "src_region": geo.get("region") if geo else None,
             "src_regionname": geo.get("regionName") if geo else None,
             "src_city": geo.get("city") if geo else None,
@@ -302,7 +303,7 @@ def get_source_details_batch():
         cur = conn.cursor()
         # Only select needed columns for geo/country/flag
         cur.execute("""
-            SELECT src_host, src_countrycode
+            SELECT src_host, src_isocountrycode
             FROM source_details
             WHERE src_host = ANY(%s)
         """, (ips,))
@@ -355,10 +356,10 @@ def get_top_stats():
         top_isp = cur.fetchone()
         # Top country from source_details
         cur.execute("""
-            SELECT src_countrycode, COUNT(*) as cnt
+            SELECT src_country, COUNT(*) as cnt
             FROM source_details
-            WHERE src_countrycode IS NOT NULL AND src_countrycode != ''
-            GROUP BY src_countrycode
+            WHERE src_country IS NOT NULL AND src_country != ''
+            GROUP BY src_country
             ORDER BY cnt DESC
             LIMIT 1
         """)
@@ -369,7 +370,7 @@ def get_top_stats():
             'top_src': top_src['src_host'] if top_src else None,
             'top_as': top_as['src_asnum'] if top_as else None,
             'top_isp': top_isp['src_isp'] if top_isp else None,
-            'top_country': top_country['src_countrycode'] if top_country else None
+            'top_country': top_country['src_country'] if top_country else None
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
