@@ -139,9 +139,34 @@ export default function App() {
     setPage(1);
   };
 
+
+  // Top stats from API
+  const [topStats, setTopStats] = useState({});
+  useEffect(() => {
+    axios.get('/api/topstats').then(res => {
+      setTopStats(res.data || {});
+    });
+  }, []);
+
   return (
-  <Box sx={{ p: 4, background: 'linear-gradient(135deg, #232526 0%, #414345 100%)', minHeight: '100vh', display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-  <Paper elevation={6} sx={{ width: 600, maxWidth: '100%', mx: 'auto', p: 3, borderRadius: 4, background: 'rgba(255,255,255,0.95)', flex: '1 0 auto' }}>
+    <Box sx={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'linear-gradient(135deg, #232526 0%, #414345 100%)',
+    }}>
+      <Box sx={{
+        flex: '1 0 auto',
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'flex-start',
+        width: '100%',
+        mt: 4,
+        mb: 4,
+      }}>
+        {/* Main logs list */}
+        <Paper elevation={6} sx={{ width: 600, maxWidth: '100%', p: 3, borderRadius: 4, background: 'rgba(255,255,255,0.95)', mr: 4 }}>
         <Typography variant="h4" fontWeight={700} gutterBottom align="center" color="primary">
           Wall of Shame Logs
         </Typography>
@@ -194,6 +219,26 @@ export default function App() {
             showFirstButton
             showLastButton
           />
+        </Box>
+      </Paper>
+  {/* Top stats summary box */}
+  <Paper elevation={4} sx={{ minWidth: 280, maxWidth: 320, p: 3, borderRadius: 4, background: 'rgba(255,255,255,0.97)', alignSelf: 'flex-start', position: 'sticky', top: 32, height: 'fit-content', boxShadow: 6 }}>
+        <Typography variant="h6" fontWeight={700} gutterBottom color="primary">Top Stats</Typography>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2">Top Source IP</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_src || 'N/A'}</Typography>
+        </Box>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2">Top AS Number</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_as || 'N/A'}</Typography>
+        </Box>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2">Top ISP</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_isp || 'N/A'}</Typography>
+        </Box>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2">Top Country</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_country || 'N/A'}</Typography>
         </Box>
       </Paper>
   <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
@@ -259,7 +304,9 @@ export default function App() {
         </DialogContent>
       </Dialog>
       {/* Footer */}
-      <Box component="footer" sx={{ mt: 4, py: 2, textAlign: 'center', color: '#888', flexShrink: 0 }}>
+  </Box>
+  {/* Footer pinned to bottom */}
+  <Box component="footer" sx={{ mt: 'auto', py: 2, textAlign: 'center', color: '#888', width: '100%', background: 'rgba(0,0,0,0.03)' }}>
         <a href="https://github.com/shrunbr/wall-of-shame" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none', marginRight: 8 }} title="GitHub Repository">
           <GitHubIcon size={28} />
         </a>
