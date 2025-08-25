@@ -39,6 +39,8 @@ export default function App() {
   const [selectedSrc, setSelectedSrc] = useState(null);
   const [open, setOpen] = useState(false);
   const [geo, setGeo] = useState({}); // { ip: { country: 'US', flag: '🇺🇸' } }
+  const [srcDetails, setSrcDetails] = useState(null); // detailed geo/AS info for selectedSrc
+  const [srcDetailsLoading, setSrcDetailsLoading] = useState(false);
 
   useEffect(() => {
     axios.get('/api/logs').then(res => {
@@ -50,35 +52,59 @@ export default function App() {
     setGrouped(groupLogsBySrcHost(logs));
   }, [logs]);
 
-  // Fetch GeoIP data for new source IPs
+  // Fetch GeoIP/country data for all source IPs from backend in one batch
   useEffect(() => {
-    let aborted = false;
-    const fetchGeo = async (ip) => {
+    let cancelled = false;
+    const ips = Object.keys(grouped).filter(ip => ip && ip !== 'Unknown');
+    if (ips.length === 0) return;
+    // Only fetch if we don't already have all
+    const missing = ips.filter(ip => !geo[ip]);
+    if (missing.length === 0) return;
+    (async () => {
       try {
-        // Skip private / unknown IPs
-        if (!/^(?:\d{1,3}\.){3}\d{1,3}$/.test(ip)) return; // naive IPv4 check
-        if (geo[ip]) return;
-        // Use ipapi.co free endpoint; falls back silently on error
-        const res = await fetch(`https://ipapi.co/${ip}/json/`);
-        if (!res.ok) throw new Error('geo failed');
-        const data = await res.json();
-        if (aborted) return;
-        const cc = data.country; // e.g. "US"
-        const flag = cc && cc.length === 2 ? cc
-          .toUpperCase()
-          .replace(/./g, ch => String.fromCodePoint(127397 + ch.charCodeAt(0))) : null;
-        setGeo(prev => ({ ...prev, [ip]: { country: cc || '??', flag: flag || '🏳️' } }));
+        const res = await fetch('/api/source_details/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ips: missing })
+        });
+        if (!res.ok) throw new Error('geo batch failed');
+        const data = await res.json(); // { ip: { country: 'US', ... } }
+        if (cancelled) return;
+        // Compute flag for each
+        const geoWithFlag = {};
+        for (const [ip, row] of Object.entries(data)) {
+          const cc = row && row.src_countrycode;
+          let flag = '🏳️';
+          if (cc && cc.length === 2 && /^[A-Z]{2}$/i.test(cc)) {
+            const up = cc.toUpperCase();
+            flag = String.fromCodePoint(up.charCodeAt(0) + 127397) + String.fromCodePoint(up.charCodeAt(1) + 127397);
+          }
+          geoWithFlag[ip] = { country: cc || '??', flag };
+        }
+        setGeo(prev => ({ ...prev, ...geoWithFlag }));
       } catch (e) {
-        if (!aborted) setGeo(prev => ({ ...prev, [ip]: { country: '??', flag: '🏳️' } }));
+        // fallback: mark as unknown
+        const fallback = {};
+        for (const ip of missing) fallback[ip] = { country: '??', flag: '🏳️' };
+        setGeo(prev => ({ ...prev, ...fallback }));
       }
-    };
-    Object.keys(grouped).forEach(ip => fetchGeo(ip));
-    return () => { aborted = true; };
+    })();
+    return () => { cancelled = true; };
   }, [grouped, geo]);
 
-  const handleOpen = src => {
+  const handleOpen = async src => {
     setSelectedSrc(src);
+    setSrcDetails(null);
+    setSrcDetailsLoading(true);
     setOpen(true);
+    try {
+      const res = await axios.get(`/api/source_details/${encodeURIComponent(src)}`);
+      setSrcDetails(res.data || null);
+    } catch (e) {
+      setSrcDetails(null);
+    } finally {
+      setSrcDetailsLoading(false);
+    }
   };
   const handleClose = () => setOpen(false);
 
@@ -124,6 +150,39 @@ export default function App() {
       <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
         <DialogTitle>Logs for {selectedSrc}</DialogTitle>
         <DialogContent>
+          {/* Source details section */}
+          {srcDetailsLoading ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Loading source details…</Typography>
+          ) : srcDetails ? (
+            <Box sx={{ mb: 2, p: 2, background: '#f5f5f5', borderRadius: 2 }}>
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom>Source Details</Typography>
+              <Table size="small">
+                <TableBody>
+                  <TableRow><TableCell>First Seen</TableCell><TableCell>{srcDetails.first_seen}</TableCell></TableRow>
+                  <TableRow><TableCell>Last Seen</TableCell><TableCell>{srcDetails.last_seen}</TableCell></TableRow>
+                  <TableRow><TableCell>Times Seen</TableCell><TableCell>{srcDetails.times_seen}</TableCell></TableRow>
+                  <TableRow><TableCell>Country</TableCell><TableCell>{srcDetails.src_countrycode} {srcDetails.src_countrycode ? String.fromCodePoint(127397 + srcDetails.src_countrycode.charCodeAt(0)) + String.fromCodePoint(127397 + srcDetails.src_countrycode.charCodeAt(1)) : ''}</TableCell></TableRow>
+                  <TableRow><TableCell>Region</TableCell><TableCell>{srcDetails.src_regionname} ({srcDetails.src_region})</TableCell></TableRow>
+                  <TableRow><TableCell>City</TableCell><TableCell>{srcDetails.src_city}</TableCell></TableRow>
+                  <TableRow><TableCell>ZIP</TableCell><TableCell>{srcDetails.src_zip}</TableCell></TableRow>
+                  <TableRow><TableCell>Latitude</TableCell><TableCell>{srcDetails.src_latitude}</TableCell></TableRow>
+                  <TableRow><TableCell>Longitude</TableCell><TableCell>{srcDetails.src_longitude}</TableCell></TableRow>
+                  <TableRow><TableCell>Timezone</TableCell><TableCell>{srcDetails.src_timezone}</TableCell></TableRow>
+                  <TableRow><TableCell>ISP</TableCell><TableCell>{srcDetails.src_isp}</TableCell></TableRow>
+                  <TableRow><TableCell>Org</TableCell><TableCell>{srcDetails.src_org}</TableCell></TableRow>
+                  <TableRow><TableCell>AS Number</TableCell><TableCell>{srcDetails.src_asnum}</TableCell></TableRow>
+                  <TableRow><TableCell>AS Org</TableCell><TableCell>{srcDetails.src_asorg}</TableCell></TableRow>
+                  <TableRow><TableCell>Reverse DNS</TableCell><TableCell>{srcDetails.src_reversedns}</TableCell></TableRow>
+                  <TableRow><TableCell>Mobile</TableCell><TableCell>{srcDetails.src_mobile ? 'Yes' : 'No'}</TableCell></TableRow>
+                  <TableRow><TableCell>Proxy</TableCell><TableCell>{srcDetails.src_proxy ? 'Yes' : 'No'}</TableCell></TableRow>
+                  <TableRow><TableCell>Hosting</TableCell><TableCell>{srcDetails.src_hosting ? 'Yes' : 'No'}</TableCell></TableRow>
+                </TableBody>
+              </Table>
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>No source details found.</Typography>
+          )}
+          {/* Logs table */}
           <TableContainer>
             <Table>
               <TableHead>
@@ -131,7 +190,6 @@ export default function App() {
                   <TableCell>Time</TableCell>
                   <TableCell>Node</TableCell>
                   <TableCell>Dest Port</TableCell>
-                  <TableCell>Local Version</TableCell>
                   <TableCell>Username</TableCell>
                   <TableCell>Password</TableCell>
                 </TableRow>
@@ -142,7 +200,6 @@ export default function App() {
                     <TableCell>{log.utc_time}</TableCell>
                     <TableCell>{log.node_id}</TableCell>
                     <TableCell>{log.dst_port}</TableCell>
-                    <TableCell>{log.logdata_localversion}</TableCell>
                     <TableCell>{log.logdata_username}</TableCell>
                     <TableCell>{log.logdata_password}</TableCell>
                   </TableRow>
