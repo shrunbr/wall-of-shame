@@ -67,6 +67,13 @@ services:
     depends_on:
       - postgres
       - opencanary
+  
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - app
 
 volumes:
   postgres-data:
