@@ -21,7 +21,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 # Copy frontend code and build it
 COPY frontend ./frontend
 WORKDIR /app/frontend
-RUN npm install && npm run build
+RUN npm install && npm run build --silent
 
 # Copy backend code and built frontend to the right place
 WORKDIR /app
