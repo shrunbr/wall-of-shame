@@ -26,6 +26,8 @@ def get_db_connection():
     )
 
 # Rate limit / caching / duplicate guard for Geo lookups
+ENABLE_GLOBAL_COLLECTOR = str(os.getenv("ENABLE_GLOBAL_COLLECTOR", "true")).lower() not in ("0", "false", "no")
+GLOBAL_COLLECTOR_URL = os.getenv("GLOBAL_COLLECTOR_URL", "https://shame.shrunbr.dev/api/webhook")
 _IP_API_FIELDS = "17039359"
 _RATE_LIMIT = 45  # per 60 seconds for this server
 _call_times = []
@@ -198,6 +200,18 @@ def _geo_worker(ip, event):
     finally:
         lock.release()
 
+def _forward_to_global_collector(payload):
+    """
+    Send the webhook payload to the global collector. This runs in a background
+    thread so it cannot delay the primary webhook flow.
+    """
+    try:
+        # send as JSON; short timeout and swallow errors
+        requests.post(GLOBAL_COLLECTOR_URL, json=payload, timeout=5)
+    except Exception:
+        # intentionally ignore errors (collector is best-effort)
+        pass
+
 # Webhook endpoint (unchanged)
 @app.route('/api/webhook', methods=['POST'])
 def webhook():
@@ -257,6 +271,13 @@ def webhook():
     
     # Geo lookup (non-blocking)
     schedule_geo_lookup(data)
+
+    if ENABLE_GLOBAL_COLLECTOR:
+        try:
+            t = threading.Thread(target=_forward_to_global_collector, args=(data,), daemon=True)
+            t.start()
+        except Exception:
+            pass
 
     return jsonify({"status": "success", "received": data}), 200
 
