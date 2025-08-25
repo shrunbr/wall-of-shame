@@ -2,6 +2,8 @@
 
 **Wall of Shame** is a web application for collecting, storing, and visualizing logs of OpenCanary connection attempts.
 
+[Want to see a demo?](https://wos-demo.shrunbr.dev)
+
 ## Features
 
 - **Webhook ingestion:** Accepts log events via a simple HTTP POST API.
