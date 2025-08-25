@@ -324,75 +324,66 @@ def get_top_stats():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Top source IP from source_details
+        # Combine top stats from source_details
         cur.execute("""
-            SELECT src_host, COUNT(*) as cnt
-            FROM source_details
-            WHERE src_host IS NOT NULL AND src_host != ''
-            GROUP BY src_host
-            ORDER BY cnt DESC
-            LIMIT 1
+            (SELECT 'src_host' as type, src_host as value, COUNT(*) as cnt
+             FROM source_details
+             WHERE src_host IS NOT NULL AND src_host != ''
+             GROUP BY src_host
+             ORDER BY cnt DESC
+             LIMIT 1)
+            UNION ALL
+            (SELECT 'src_asnum', src_asnum::text, COUNT(*) as cnt
+             FROM source_details
+             WHERE src_asnum IS NOT NULL
+             GROUP BY src_asnum
+             ORDER BY cnt DESC
+             LIMIT 1)
+            UNION ALL
+            (SELECT 'src_isp', src_isp, COUNT(*) as cnt
+             FROM source_details
+             WHERE src_isp IS NOT NULL AND src_isp != ''
+             GROUP BY src_isp
+             ORDER BY cnt DESC
+             LIMIT 1)
+            UNION ALL
+            (SELECT 'src_country', src_country, COUNT(*) as cnt
+             FROM source_details
+             WHERE src_country IS NOT NULL AND src_country != ''
+             GROUP BY src_country
+             ORDER BY cnt DESC
+             LIMIT 1)
         """)
-        top_src = cur.fetchone()
-        # Top AS number from source_details
+        top_stats = {row['type']: row['value'] for row in cur.fetchall()}
+
+        # Combine top username and password from webhook_logs
         cur.execute("""
-            SELECT src_asnum, COUNT(*) as cnt
-            FROM source_details
-            WHERE src_asnum IS NOT NULL
-            GROUP BY src_asnum
-            ORDER BY cnt DESC
-            LIMIT 1
+            (SELECT 'logdata_username' as type, logdata_username as value, COUNT(*) as cnt
+             FROM webhook_logs
+             WHERE logdata_username IS NOT NULL AND logdata_username != ''
+             GROUP BY logdata_username
+             ORDER BY cnt DESC
+             LIMIT 1)
+            UNION ALL
+            (SELECT 'logdata_password', logdata_password, COUNT(*) as cnt
+             FROM webhook_logs
+             WHERE logdata_password IS NOT NULL AND logdata_password != ''
+             GROUP BY logdata_password
+             ORDER BY cnt DESC
+             LIMIT 1)
         """)
-        top_as = cur.fetchone()
-        # Top ISP from source_details
-        cur.execute("""
-            SELECT src_isp, COUNT(*) as cnt
-            FROM source_details
-            WHERE src_isp IS NOT NULL AND src_isp != ''
-            GROUP BY src_isp
-            ORDER BY cnt DESC
-            LIMIT 1
-        """)
-        top_isp = cur.fetchone()
-        # Top country from source_details
-        cur.execute("""
-            SELECT src_country, COUNT(*) as cnt
-            FROM source_details
-            WHERE src_country IS NOT NULL AND src_country != ''
-            GROUP BY src_country
-            ORDER BY cnt DESC
-            LIMIT 1
-        """)
-        top_country = cur.fetchone()
-        # Top username from webhook_logs
-        cur.execute("""
-            SELECT logdata_username, COUNT(*) as cnt
-            FROM webhook_logs
-            WHERE logdata_username IS NOT NULL AND logdata_username != ''
-            GROUP BY logdata_username
-            ORDER BY cnt DESC
-            LIMIT 1
-        """)
-        top_username = cur.fetchone()
-        # Top password from webhook_logs
-        cur.execute("""
-            SELECT logdata_password, COUNT(*) as cnt
-            FROM webhook_logs
-            WHERE logdata_password IS NOT NULL AND logdata_password != ''
-            GROUP BY logdata_password
-            ORDER BY cnt DESC
-            LIMIT 1
-        """)
-        top_password = cur.fetchone()
+        for row in cur.fetchall():
+            top_stats[row['type']] = row['value']
+
         cur.close()
         conn.close()
         return jsonify({
-            'top_src': top_src['src_host'] if top_src else None,
-            'top_as': top_as['src_asnum'] if top_as else None,
-            'top_isp': top_isp['src_isp'] if top_isp else None,
-            'top_country': top_country['src_country'] if top_country else None,
-            'top_username': top_username['logdata_username'] if top_username else None,
-            'top_password': top_password['logdata_password'] if top_password else None
+            'top_src': top_stats.get('src_host'),
+            'top_as': top_stats.get('src_asnum'),
+            'top_isp': top_stats.get('src_isp'),
+            'top_country': top_stats.get('src_country'),
+            'top_username': top_stats.get('logdata_username'),
+            'top_password': top_stats.get('logdata_password')
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
