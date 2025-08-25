@@ -36,6 +36,8 @@
 
 Before you deploy this, please note that I do have a global collector at [https://shame.shrunbr.dev](https://shame.shrunbr.dev). By default, the web interface will forward all webhook data it receives to the global collector. You can disable this by adding `ENABLE_GLOBAL_COLLECTOR: false` to the environment variables under the `app` service or whatever you've named the service that is running the wall-of-shame container.
 
+All of the data that gets sent/stored in the global collector is the same data that is sent into postgres from the `webhook` function in [main.py](main.py).
+
 If you are interested in running your own global collector, please follow the distributed deployment model below.
 
 ### All-in-One
