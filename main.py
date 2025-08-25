@@ -1,11 +1,11 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
 import json
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='frontend/build', static_url_path='/')
 
 load_dotenv()
 
@@ -19,7 +19,8 @@ def get_db_connection():
         cursor_factory=RealDictCursor
     )
 
-@app.route('/webhook', methods=['POST'])
+# Webhook endpoint (unchanged)
+@app.route('/api/webhook', methods=['POST'])
 def webhook():
     data = None
     if request.is_json:
@@ -72,5 +73,29 @@ def webhook():
 
     return jsonify({"status": "success", "received": data}), 200
 
+
+# API endpoint for logs
+@app.route('/api/logs', methods=['GET'])
+def get_logs():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM webhook_logs")
+        logs = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify({'logs': logs})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Serve React build
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_react(path):
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5050)
+    app.run(host='0.0.0.0', port=8080)
