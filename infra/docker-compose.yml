@@ -69,7 +69,7 @@ services:
       - opencanary
   
   cloudflared:
-    container-name: wos-cloudflared
+    container_name: wos-cloudflared
     image: cloudflare/cloudflared:latest
     command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
     restart: unless-stopped
