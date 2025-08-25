@@ -34,7 +34,7 @@
 
 ### All-in-One
 
-Before we can deploy our Wall of Shame we need to setup our modify our `opencanary.conf` file, modify `docker-compose.yml` and setup our environment variables. 
+Before we can deploy our Wall of Shame we need to setup our modify our `opencanary.conf` file, modify `docker-compose.yml` and setup our environment variables. In the provided configuration FTP, SSH and HTTP are already enabled.
 
 Modify the `opencanary.conf` file first. For a configuration reference please visit [the OpenCanary configuration documentation.](https://opencanary.readthedocs.io/en/latest/starting/configuration.html)
 
