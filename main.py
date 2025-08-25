@@ -406,10 +406,19 @@ def get_top_stats():
                 GROUP BY logdata_password
                 ORDER BY cnt DESC, value ASC
                 LIMIT 1
+            ),
+            top_node AS (
+                SELECT node_id AS value, COUNT(*) AS cnt
+                FROM webhook_logs
+                WHERE node_id IS NOT NULL AND node_id != ''
+                GROUP BY node_id
+                ORDER BY cnt DESC, value ASC
+                LIMIT 1
             )
             SELECT
                 (SELECT value FROM top_username) AS top_username,
-                (SELECT value FROM top_password) AS top_password
+                (SELECT value FROM top_password) AS top_password,
+                (SELECT value FROM top_node) AS top_node
         """)
         row = cur.fetchone()
         if row:
