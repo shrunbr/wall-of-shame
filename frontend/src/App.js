@@ -181,9 +181,7 @@ export default function App() {
               }>
                 <ListItemText
                   primary={<>
-                    <a href={`https://bgp.he.net/ip/${src}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600, textDecoration: 'none', color: '#1976d2' }}>
-                      {src}
-                    </a>
+                    <b>{src}</b>
                     <span style={{ marginLeft: 8 }} title={meta?.country || 'Loading'}>
                       {meta ? meta.flag : '…'}
                     </span>
@@ -225,11 +223,40 @@ export default function App() {
         <Typography variant="h6" fontWeight={700} gutterBottom color="primary">Top Stats</Typography>
         <Box sx={{ mb: 2 }}>
           <Typography variant="subtitle2">Top Source IP</Typography>
-          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_src || 'N/A'}</Typography>
+          <Box
+            component="span"
+            role={topStats.top_src ? "button" : undefined}
+            tabIndex={topStats.top_src ? 0 : -1}
+            onClick={() => topStats.top_src && handleOpen(topStats.top_src)}
+            onKeyDown={(e) => { if (topStats.top_src && (e.key === 'Enter' || e.key === ' ')) handleOpen(topStats.top_src); }}
+            sx={{ fontWeight: 600, cursor: topStats.top_src ? 'pointer' : 'default', color: topStats.top_src ? 'primary.main' : 'inherit', display: 'inline-block' }}
+            aria-label={topStats.top_src ? `Open details for ${topStats.top_src}` : undefined}
+          >
+            {topStats.top_src || 'N/A'}
+          </Box>
         </Box>
         <Box sx={{ mb: 2 }}>
           <Typography variant="subtitle2">Top AS Number</Typography>
-          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_as || 'N/A'}</Typography>
+          {topStats.top_as ? (
+            <Box
+              component="a"
+              href={`https://bgp.he.net/AS${String(topStats.top_as).replace(/^AS/i, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                fontWeight: 600,
+                color: 'primary.main',
+                textDecoration: 'none',
+                cursor: 'pointer',
+                display: 'inline-block'
+              }}
+              aria-label={`Open BGP information for AS${String(topStats.top_as).replace(/^AS/i, '')}`}
+            >
+              {topStats.top_as}
+            </Box>
+          ) : (
+            <Typography variant="body1" sx={{ fontWeight: 600 }}>{'N/A'}</Typography>
+          )}
         </Box>
         <Box sx={{ mb: 2 }}>
           <Typography variant="subtitle2">Top ISP</Typography>
@@ -277,6 +304,7 @@ export default function App() {
                   <TableRow><TableCell>Mobile</TableCell><TableCell>{srcDetails.src_mobile ? 'Yes' : 'No'}</TableCell></TableRow>
                   <TableRow><TableCell>Proxy</TableCell><TableCell>{srcDetails.src_proxy ? 'Yes' : 'No'}</TableCell></TableRow>
                   <TableRow><TableCell>Hosting</TableCell><TableCell>{srcDetails.src_hosting ? 'Yes' : 'No'}</TableCell></TableRow>
+                  <TableRow><TableCell>BGP Information</TableCell><TableCell><a href={`https://bgp.he.net/ip/${selectedSrc}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600, textDecoration: 'none', color: '#1976d2' }}><b>Hurricane Electric</b></a></TableCell></TableRow>
                 </TableBody>
               </Table>
             </Box>
