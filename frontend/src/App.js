@@ -239,6 +239,14 @@ export default function App() {
           <Typography variant="subtitle2">Top Country</Typography>
           <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_country || 'N/A'}</Typography>
         </Box>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2">Top Username</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_username || 'N/A'}</Typography>
+        </Box>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2">Top Password</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_password || 'N/A'}</Typography>
+        </Box>
       </Paper>
   <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
         <DialogTitle>Logs for {selectedSrc}</DialogTitle>

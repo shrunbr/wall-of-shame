@@ -324,10 +324,10 @@ def get_top_stats():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Top source IP from webhook_logs
+        # Top source IP from source_details
         cur.execute("""
             SELECT src_host, COUNT(*) as cnt
-            FROM webhook_logs
+            FROM source_details
             WHERE src_host IS NOT NULL AND src_host != ''
             GROUP BY src_host
             ORDER BY cnt DESC
@@ -364,13 +364,35 @@ def get_top_stats():
             LIMIT 1
         """)
         top_country = cur.fetchone()
+        # Top username from webhook_logs
+        cur.execute("""
+            SELECT logdata_username, COUNT(*) as cnt
+            FROM webhook_logs
+            WHERE logdata_username IS NOT NULL AND logdata_username != ''
+            GROUP BY logdata_username
+            ORDER BY cnt DESC
+            LIMIT 1
+        """)
+        top_username = cur.fetchone()
+        # Top password from webhook_logs
+        cur.execute("""
+            SELECT logdata_password, COUNT(*) as cnt
+            FROM webhook_logs
+            WHERE logdata_password IS NOT NULL AND logdata_password != ''
+            GROUP BY logdata_password
+            ORDER BY cnt DESC
+            LIMIT 1
+        """)
+        top_password = cur.fetchone()
         cur.close()
         conn.close()
         return jsonify({
             'top_src': top_src['src_host'] if top_src else None,
             'top_as': top_as['src_asnum'] if top_as else None,
             'top_isp': top_isp['src_isp'] if top_isp else None,
-            'top_country': top_country['src_country'] if top_country else None
+            'top_country': top_country['src_country'] if top_country else None,
+            'top_username': top_username['logdata_username'] if top_username else None,
+            'top_password': top_password['logdata_password'] if top_password else None
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
