@@ -34,6 +34,10 @@
 
 :warning: **OpenCanary is a honeypot. If you don't know what that is or what you are doing with this, go research it before moving forward with this deployment. Make sure you deploy this in a secure, segmented environment, preferrably a DMZ, a cloud server or somewhere that is firewalled or seperate from your own network. USE THIS AT YOUR OWN RISK!** :warning:
 
+Before you deploy this, please note that I do have a global collector at [https://shame.shrunbr.dev](https://shame.shrunbr.dev). By default, the web interface will forward all webhook data it receives to the global collector. You can disable this by adding `ENABLE_GLOBAL_COLLECTOR: false` to the environment variables under the `app` service or whatever you've named the service that is running the wall-of-shame container.
+
+If you are interested in running your own global collector, please follow the distributed deployment model below.
+
 ### All-in-One
 
 Before we can deploy our Wall of Shame we need to setup our modify our `opencanary.conf` file, modify `docker-compose.yml` and setup our environment variables. In the provided configuration FTP, SSH and HTTP are already enabled.
@@ -50,6 +54,8 @@ Now that we have that all setup, we can get our environment variables going. To 
 If you have gone with option 1, you need to run `docker compose up -d` within the `infra/` folder to start the stack.
 
 If you have gone with option 2, you need to run `docker compose --env-file ../.env up -d` within the `infra/` folder to start the stack.
+
+### Distributed
 
 ## Acknowledgements
 
