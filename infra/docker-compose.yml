@@ -10,7 +10,7 @@ services:
       - "${POSTGRES_PORT}:${POSTGRES_PORT}"
     volumes:
       - ./initdb:/docker-entrypoint-initdb.d
-      #- postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
   
   opencanary:
     container_name: wos-opencanary
@@ -53,8 +53,21 @@ services:
       # - "9418:9418"
     volumes:
       - ./opencanary.conf:/root/.opencanary.conf
-      #- opencanary-data:/data
+  
+  app:
+    container_name: wos-frontend
+    image: shrunbr/wall-of-shame:0.1.0
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+    ports:
+      - "8081:8081"
+    depends_on:
+      - postgres
+      - opencanary
 
-#volumes:
-#  postgres-data:
-#  opencanary-data:
+volumes:
+  postgres-data:
