@@ -108,6 +108,7 @@ export default function App() {
     try {
       const res = await axios.get(`/api/source_details/${encodeURIComponent(src)}`);
       const details = res.data.logs || res.data.data || res.data || [];
+      setSrcDetails(Array.isArray(details) ? details[0] : details);
     } catch (e) {
       setSrcDetails(null);
     } finally {
