@@ -30,7 +30,7 @@
 
 ---
 
-## Deployment Styles
+## Deployment
 
 :warning: **OpenCanary is a honeypot. If you don't know what that is or what you are doing with this, go research it before moving forward with this deployment. Make sure you deploy this in a secure, segmented environment, preferrably a DMZ, a cloud server or somewhere that is firewalled or seperate from your own network. USE THIS AT YOUR OWN RISK!** :warning:
 
