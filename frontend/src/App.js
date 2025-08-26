@@ -56,7 +56,7 @@ export default function App() {
 
   useEffect(() => {
     axios.get('/api/logs').then(res => {
-      setLogs(res.data.logs || []);
+      setLogs(res.data.logs || res.data.data || res.data || []);
     });
   }, []);
 
@@ -69,7 +69,6 @@ export default function App() {
     let cancelled = false;
     const ips = Object.keys(grouped).filter(ip => ip && ip !== 'Unknown');
     if (ips.length === 0) return;
-    // Only fetch if we don't already have all
     const missing = ips.filter(ip => !geo[ip]);
     if (missing.length === 0) return;
     (async () => {
@@ -80,12 +79,10 @@ export default function App() {
           body: JSON.stringify({ ips: missing })
         });
         if (!res.ok) throw new Error('geo batch failed');
-        const data = await res.json(); // { ip: { country: 'US', ... } }
+        const result = await res.json();
         if (cancelled) return;
-        // Compute flag for each
         const geoWithFlag = {};
-        for (const [ip, row] of Object.entries(data)) {
-          const cc = row && row.src_isocountrycode;
+        for (const [ip, cc] of Object.entries(result.data || {})) {
           let flag = '🏳️';
           if (cc && cc.length === 2 && /^[A-Z]{2}$/i.test(cc)) {
             const up = cc.toUpperCase();
@@ -95,14 +92,13 @@ export default function App() {
         }
         setGeo(prev => ({ ...prev, ...geoWithFlag }));
       } catch (e) {
-        // fallback: mark as unknown
         const fallback = {};
         for (const ip of missing) fallback[ip] = { country: '??', flag: '🏳️' };
         setGeo(prev => ({ ...prev, ...fallback }));
       }
     })();
     return () => { cancelled = true; };
-  }, [grouped, geo]);
+  }, [grouped]);
 
   const handleOpen = async src => {
     setSelectedSrc(src);
@@ -111,7 +107,7 @@ export default function App() {
     setOpen(true);
     try {
       const res = await axios.get(`/api/source_details/${encodeURIComponent(src)}`);
-      setSrcDetails(res.data || null);
+      const details = res.data.logs || res.data.data || res.data || [];
     } catch (e) {
       setSrcDetails(null);
     } finally {
@@ -144,7 +140,7 @@ export default function App() {
   const [topStats, setTopStats] = useState({});
   useEffect(() => {
     axios.get('/api/topstats').then(res => {
-      setTopStats(res.data || {});
+      setTopStats(res.data.logs || res.data.data || res.data || []);
     });
   }, []);
 
