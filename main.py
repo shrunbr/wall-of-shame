@@ -1,67 +1,55 @@
-from flask import Flask, request, jsonify, send_from_directory
-from dotenv import load_dotenv
-import json
+import asyncio
 import os
-import psycopg2
+import ipaddress
 import threading
-import time
 import re
 import requests
-import ipaddress
+import time
+import logging
+from decimal import Decimal
+from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
+from dotenv import load_dotenv
 from datetime import datetime, timezone
-from psycopg2.extras import RealDictCursor
-from psycopg2.pool import ThreadedConnectionPool
+from contextlib import asynccontextmanager
+from psycopg_pool import AsyncConnectionPool, pool
+import uvicorn
 
-app = Flask(__name__, static_folder='frontend/build', static_url_path='/')
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app):
+    dsn = (
+        f"host={os.getenv('POSTGRES_HOST')} "
+        f"port={os.getenv('POSTGRES_PORT')} "
+        f"dbname={os.getenv('POSTGRES_DB')} "
+        f"user={os.getenv('POSTGRES_USER')} "
+        f"password={os.getenv('POSTGRES_PASSWORD')}"
+    )
+    # create the pool object (constructor no longer opens it)
+    pool = AsyncConnectionPool(
+        conninfo=dsn,
+        min_size=int(os.getenv("DB_POOL_MIN", "1")),
+        max_size=int(os.getenv("DB_POOL_MAX", "10")),
+        open=False
+    )
+    # explicitly open the pool to avoid the deprecation warning
+    await pool.open()
+    app.state.db_pool = pool
+
+    try:
+        yield
+    finally:
+        # close the pool on shutdown
+        await app.state.db_pool.close()
+
+app = FastAPI(lifespan=lifespan)
 load_dotenv()
 
-# DB Connection Pool Globals
-_db_pool = None
-_DB_POOL_MIN = 1
-_DB_POOL_MAX = 10
-
-def init_db_pool():
-    global _db_pool
-    if _db_pool is None:
-        _db_pool = ThreadedConnectionPool(
-            minconn=_DB_POOL_MIN,
-            maxconn=_DB_POOL_MAX,
-            dbname=os.getenv("POSTGRES_DB"),
-            user=os.getenv("POSTGRES_USER"),
-            password=os.getenv("POSTGRES_PASSWORD"),
-            host=os.getenv("POSTGRES_HOST"),
-            port=os.getenv("POSTGRES_PORT"),
-            cursor_factory=RealDictCursor
-        )
-
-def get_db_connection():
-    """
-    Return a pooled connection. Initializes the pool lazily.
-    Caller should release connections via release_db_connection(conn).
-    """
-    init_db_pool()
-    return _db_pool.getconn()
-
-def release_db_connection(conn, close=False):
-    """
-    Return connection to pool. If close=True, actually close the physical connection
-    instead of returning it to the pool.
-    """
-    if not conn:
-        return
-    init_db_pool()
-    try:
-        if close:
-            _db_pool.putconn(conn, close=True)
-        else:
-            _db_pool.putconn(conn)
-    except Exception:
-        try:
-            # fallback to closing the connection if returning fails
-            conn.close()
-        except Exception:
-            pass
+_build_dir = os.path.join(os.path.dirname(__file__), "frontend", "build")
+app.mount("/static", StaticFiles(directory=os.path.join(_build_dir, "static")), name="static")
 
 # Rate limit / caching / duplicate guard for Geo lookups
 #ENABLE_GLOBAL_COLLECTOR = str(os.getenv("ENABLE_GLOBAL_COLLECTOR", "false")).lower() not in ("1", "true", "yes")
@@ -121,22 +109,13 @@ def _within_rate_limit():
         _call_times.append(now)
         return True
 
-def _ip_exists(conn, ip):
-    with conn.cursor() as c:
-        c.execute("SELECT 1 FROM source_details WHERE src_host=%s LIMIT 1", (ip,))
-        return c.fetchone() is not None
+async def _ip_exists_async(conn, ip):
+    async with conn.cursor() as c:
+        await c.execute("SELECT 1 FROM source_details WHERE src_host=%s LIMIT 1", (ip,))
+        row = await c.fetchone()
+        return row is not None
 
-def _insert_geo_row(conn, base, geo):
-    """
-    Upsert geo data.
-    New IP:
-      first_seen = last_seen = webhook utc_time (or now)
-      times_seen = 1
-    Existing IP (conflict):
-      last_seen = GREATEST(existing.last_seen, new.last_seen)
-      times_seen = times_seen + 1
-      (other geo fields remain unchanged)
-    """
+async def _insert_geo_row_async(conn, base, geo):
     asnum = None
     asorg = None
     if geo and geo.get("as"):
@@ -152,8 +131,32 @@ def _insert_geo_row(conn, base, geo):
 
     ts = base.get("utc_time") or datetime.now(timezone.utc)
 
-    with conn.cursor() as cur:
-        cur.execute("""
+    with_params = {
+        "first_seen": ts,
+        "last_seen": ts,
+        "times_seen": 1,
+        "src_host": base.get("src_host"),
+        "src_country": geo.get("country") if geo else None,
+        "src_isocountrycode": geo.get("countryCode") if geo else None,
+        "src_region": geo.get("region") if geo else None,
+        "src_regionname": geo.get("regionName") if geo else None,
+        "src_city": geo.get("city") if geo else None,
+        "src_zip": geo.get("zip") if geo else None,
+        "src_latitude": geo.get("lat") if geo else None,
+        "src_longitude": geo.get("lon") if geo else None,
+        "src_timezone": geo.get("timezone") if geo else None,
+        "src_isp": geo.get("isp") if geo else None,
+        "src_org": geo.get("org") if geo else None,
+        "src_asnum": asnum,
+        "src_asorg": asorg,
+        "src_reversedns": geo.get("reverse") if geo else None,
+        "src_mobile": geo.get("mobile") if geo else None,
+        "src_proxy": geo.get("proxy") if geo else None,
+        "src_hosting": geo.get("hosting") if geo else None
+    }
+
+    async with conn.cursor() as cur:
+        await cur.execute("""
             INSERT INTO source_details (
                 first_seen, last_seen, times_seen,
                 src_host, src_country, src_isocountrycode, src_region, src_regionname, src_city, src_zip,
@@ -171,29 +174,7 @@ def _insert_geo_row(conn, base, geo):
             DO UPDATE SET
                 last_seen = GREATEST(source_details.last_seen, EXCLUDED.last_seen),
                 times_seen = source_details.times_seen + 1
-        """, {
-            "first_seen": ts,
-            "last_seen": ts,
-            "times_seen": 1,
-            "src_host": base.get("src_host"),
-            "src_country": geo.get("country") if geo else None,
-            "src_isocountrycode": geo.get("countryCode") if geo else None,
-            "src_region": geo.get("region") if geo else None,
-            "src_regionname": geo.get("regionName") if geo else None,
-            "src_city": geo.get("city") if geo else None,
-            "src_zip": geo.get("zip") if geo else None,
-            "src_latitude": geo.get("lat") if geo else None,
-            "src_longitude": geo.get("lon") if geo else None,
-            "src_timezone": geo.get("timezone") if geo else None,
-            "src_isp": geo.get("isp") if geo else None,
-            "src_org": geo.get("org") if geo else None,
-            "src_asnum": asnum,
-            "src_asorg": asorg,
-            "src_reversedns": geo.get("reverse") if geo else None,
-            "src_mobile": geo.get("mobile") if geo else None,
-            "src_proxy": geo.get("proxy") if geo else None,
-            "src_hosting": geo.get("hosting") if geo else None
-        })
+        """, with_params)
 
 def _fetch_geo(ip):
     if not _within_rate_limit():
@@ -208,33 +189,34 @@ def _fetch_geo(ip):
         pass
     return None
 
-def schedule_geo_lookup(event):
+def schedule_geo_lookup(event, background: BackgroundTasks = None, app=None):
     ip = event.get("src_host")
     if not ip:
         return
     if not _is_public_candidate(ip):
         return
-    t = threading.Thread(target=_geo_worker, args=(ip, event), daemon=True)
-    t.start()
 
-def _geo_worker(ip, event):
+    try:
+        background.add_task(_geo_worker_async, app, ip, event)
+        return
+    except Exception as e:
+        logger.error(f"Failed to schedule background task: {e}")
+        return
+
+async def _geo_worker_async(app, ip, event):
     lock = _acquire_ip_lock(ip)
     try:
-        conn = get_db_connection()
-        try:
+        pool = app.state.db_pool
+        async with pool.connection() as conn:
             # Decide whether to fetch geo (only if new IP)
-            exists = _ip_exists(conn, ip)
+            exists = await _ip_exists_async(conn, ip)
             geo = None
             if not exists:
-                geo = _fetch_geo(ip)
+                # _fetch_geo is blocking (requests); run in threadpool
+                geo = await asyncio.to_thread(_fetch_geo, ip)
             # Upsert row (increments times_seen even if geo is None)
-            _insert_geo_row(conn, event, geo or {})
-            conn.commit()
-        finally:
-            try:
-                release_db_connection(conn)
-            except Exception:
-                pass
+            await _insert_geo_row_async(conn, event, geo or {})
+            await conn.commit()
     finally:
         lock.release()
 
@@ -250,232 +232,229 @@ def _geo_worker(ip, event):
 #        # intentionally ignore errors (collector is best-effort)
 #        pass
 
-# Webhook endpoint (unchanged)
-@app.route('/api/webhook', methods=['POST'])
-def webhook():
-    data = None
-    if request.is_json:
-        try:
-            data = request.get_json(force=True)
-        except Exception as e:
-            return jsonify({"status": "error", "message": f"Invalid JSON: {str(e)}"}), 400
+def serialize_datetimes(obj):
+    if isinstance(obj, dict):
+        return {k: serialize_datetimes(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [serialize_datetimes(i) for i in obj]
+    elif isinstance(obj, datetime):
+        return obj.strftime('%Y-%m-%d %H:%M:%S %z')
+    elif isinstance(obj, Decimal):
+        return float(obj)
     else:
+        return obj
+
+@app.post("/api/webhook")
+async def webhook(request: Request, background: BackgroundTasks):
+    try:
+        data = await request.json()
+    except Exception:
+        # fallback: if clients send form-encoded like before, try to parse raw body
+        body = await request.body()
         try:
-            if len(request.form) == 1:
-                form_value = next(iter(request.form.values()))
-                data = json.loads(form_value)
-            else:
-                data = request.form.to_dict()
-        except Exception as e:
-            return jsonify({"status": "error", "message": f"Invalid form data: {str(e)}"}), 400
+            import json as _json
+            data = _json.loads(body.decode("utf-8") or "{}")
+        except Exception:
+            return JSONResponse(content={"status": "error", "message": "Invalid JSON"}, status_code=400)
 
-    # Insert into database
+    if data.get("src_host") == "":
+        return JSONResponse(content={"status": "error", "message": "src_host is not defined."}, status_code=400)
+
+    # async DB insert using psycopg_pool.AsyncConnectionPool
+    pool = request.app.state.db_pool
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            logdata = data.get("logdata", {}) or {}
+            await cur.execute("""
+                INSERT INTO webhook_logs (
+                    dst_host, dst_port, local_time, local_time_adjusted, logtype, node_id,
+                    src_host, src_port, utc_time,
+                    logdata_hostname, logdata_path, logdata_useragent, logdata_localversion, logdata_password, logdata_remoteversion, logdata_username, logdata_session
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                data.get("dst_host"),
+                data.get("dst_port"),
+                data.get("local_time"),
+                data.get("local_time_adjusted"),
+                data.get("logtype"),
+                data.get("node_id"),
+                data.get("src_host"),
+                data.get("src_port"),
+                data.get("utc_time"),
+                logdata.get("HOSTNAME"),
+                logdata.get("PATH"),
+                logdata.get("USERAGENT"),
+                logdata.get("LOCALVERSION"),
+                logdata.get("PASSWORD"),
+                logdata.get("REMOTEVERSION"),
+                logdata.get("USERNAME"),
+                logdata.get("SESSION"),
+            ))
+        await conn.commit()
+
+    schedule_geo_lookup(data, background=background, app=request.app)
+
+    return JSONResponse(content={"status": "success", "received": data}, status_code=200)
+
+@app.get('/api/logs')
+async def get_logs(request: Request, background: BackgroundTasks):
     try:
-        if data.get("src_host") == "":
-            return jsonify({"status": "error", "message": f"src_host is not defined."}), 400
-        conn = get_db_connection()
-        cur = conn.cursor()
-        logdata = data.get("logdata", {})
-        cur.execute("""
-            INSERT INTO webhook_logs (
-                dst_host, dst_port, local_time, local_time_adjusted, logtype, node_id,
-                src_host, src_port, utc_time,
-                logdata_hostname, logdata_path, logdata_useragent, logdata_localversion, logdata_password, logdata_remoteversion, logdata_username, logdata_session
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            data.get("dst_host"),
-            data.get("dst_port"),
-            data.get("local_time"),
-            data.get("local_time_adjusted"),
-            data.get("logtype"),
-            data.get("node_id"),
-            data.get("src_host"),
-            data.get("src_port"),
-            data.get("utc_time"),
-            logdata.get("HOSTNAME"),
-            logdata.get("PATH"),
-            logdata.get("USERAGENT"),
-            logdata.get("LOCALVERSION"),
-            logdata.get("PASSWORD"),
-            logdata.get("REMOTEVERSION"),
-            logdata.get("USERNAME"),
-            logdata.get("SESSION"),
-        ))
-        conn.commit()
-        cur.close()
-        release_db_connection(conn)
+        pool = request.app.state.db_pool
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM webhook_logs")
+                rows = await cur.fetchall()
+                columns = [desc[0] for desc in cur.description]
+                data = [dict(zip(columns, row)) for row in rows]
+                data = serialize_datetimes(data)
+                return JSONResponse(content={"status": "success", "data": data}, status_code=200)
     except Exception as e:
-        return jsonify({"status": "error", "message": f"DB error: {str(e)}"}), 500
-    
-    # Geo lookup (non-blocking)
-    schedule_geo_lookup(data)
+        logger.error(f"Failed to retrieve logs: {e}")
+        return JSONResponse(content={"status": "error", "message": "Failed to retrieve logs"}, status_code=500)
 
-    #if ENABLE_GLOBAL_COLLECTOR:
-    #    try:
-    #        t = threading.Thread(target=_forward_to_global_collector, args=(data,), daemon=True)
-    #        t.start()
-    #    except Exception:
-    #        pass
-
-    return jsonify({"status": "success", "received": data}), 200
-
-
-# API endpoint for logs
-@app.route('/api/logs', methods=['GET'])
-def get_logs():
+@app.get('/api/source_details/{src_host}')
+async def get_source_details(src_host: str, request: Request):
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM webhook_logs")
-        logs = cur.fetchall()
-        cur.close()
-        release_db_connection(conn)
-        return jsonify({'logs': logs})
+        pool = request.app.state.db_pool
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT * FROM source_details WHERE src_host = %s", (src_host,))
+                rows = await cur.fetchall()
+                columns = [desc[0] for desc in cur.description]
+                data = [dict(zip(columns, row)) for row in rows]
+                data = serialize_datetimes(data)
+                return JSONResponse(content={"status": "success", "data": data}, status_code=200)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to retrieve source details for {src_host}: {e}")
+        return JSONResponse(content={"status": "error", "message": "Failed to retrieve source details"}, status_code=500)
 
-# API endpoint for source details by IP
-@app.route('/api/source_details/<ip>', methods=['GET'])
-def get_source_details(ip):
+@app.post('/api/source_details/batch')
+async def get_source_details_batch(request: Request):
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM source_details WHERE src_host = %s", (ip,))
-        row = cur.fetchone()
-        cur.close()
-        release_db_connection(conn)
-        if row:
-            return jsonify(row)
-        else:
-            return jsonify({'error': 'Not found'}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/source_details/batch', methods=['POST'])
-def get_source_details_batch():
-    try:
-        data = request.get_json(force=True)
+        data = await request.json()
         ips = data.get('ips', [])
-        if not isinstance(ips, list) or not ips:
-            return jsonify({})
-        conn = get_db_connection()
-        cur = conn.cursor()
-        # Only select needed columns for geo/country/flag
-        cur.execute("""
-            SELECT src_host, src_isocountrycode
-            FROM source_details
-            WHERE src_host = ANY(%s)
-        """, (ips,))
-        rows = cur.fetchall()
-        cur.close()
-        release_db_connection(conn)
-        # Map: ip -> row (or None)
-        result = {ip: None for ip in ips}
-        for row in rows:
-            result[row['src_host']] = row
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({}), 500
+        if not ips:
+            return JSONResponse(content={"status": "error", "message": "ips is required"}, status_code=400)
 
-# API endpoint for top stats (source IP, AS number, ISP, country)
-@app.route('/api/topstats', methods=['GET'])
-def get_top_stats():
+        pool = request.app.state.db_pool
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT src_host, src_isocountrycode FROM source_details WHERE src_host = ANY(%s)", (ips,))
+                rows = await cur.fetchall()
+                result = {row[0]: row[1] for row in rows}
+                return JSONResponse(content={"status": "success", "data": result}, status_code=200)
+    except Exception as e:
+        logger.error(f"Failed to retrieve source details for batch: {e}")
+        return JSONResponse(content={"status": "error", "message": "Failed to retrieve source details"}, status_code=500)
+
+@app.get('/api/topstats')
+async def get_top_stats(request: Request):
     try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            WITH
-            top_src_host AS (
-                SELECT src_host AS value, SUM(times_seen) AS cnt
-                FROM source_details
-                WHERE src_host IS NOT NULL AND src_host != ''
-                GROUP BY src_host
-                ORDER BY cnt DESC, value ASC
-                LIMIT 1
-            ),
-            top_asnum AS (
-                SELECT src_asnum::text AS value, SUM(times_seen) AS cnt
-                FROM source_details
-                WHERE src_asnum IS NOT NULL
-                GROUP BY src_asnum
-                ORDER BY cnt DESC, value ASC
-                LIMIT 1
-            ),
-            top_isp AS (
-                SELECT src_isp AS value, SUM(times_seen) AS cnt
-                FROM source_details
-                WHERE src_isp IS NOT NULL AND src_isp != ''
-                GROUP BY src_isp
-                ORDER BY cnt DESC, value ASC
-                LIMIT 1
-            ),
-            top_country AS (
-                SELECT src_country AS value, SUM(times_seen) AS cnt
-                FROM source_details
-                WHERE src_country IS NOT NULL AND src_country != ''
-                GROUP BY src_country
-                ORDER BY cnt DESC, value ASC
-                LIMIT 1
-            )
-            SELECT
-                (SELECT value FROM top_src_host) AS top_src,
-                (SELECT value FROM top_asnum) AS top_as,
-                (SELECT value FROM top_isp) AS top_isp,
-                (SELECT value FROM top_country) AS top_country
-        """)
-        row = cur.fetchone()
-        top_stats = dict(row) if row else {}
+        pool = request.app.state.db_pool
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("""
+                                WITH
+                                top_src_host AS (
+                                    SELECT src_host AS value, SUM(times_seen) AS cnt
+                                    FROM source_details
+                                    WHERE src_host IS NOT NULL AND src_host != ''
+                                    GROUP BY src_host
+                                    ORDER BY cnt DESC, value ASC
+                                    LIMIT 1
+                                ),
+                                top_asnum AS (
+                                    SELECT src_asnum::text AS value, SUM(times_seen) AS cnt
+                                    FROM source_details
+                                    WHERE src_asnum IS NOT NULL
+                                    GROUP BY src_asnum
+                                    ORDER BY cnt DESC, value ASC
+                                    LIMIT 1
+                                ),
+                                top_isp AS (
+                                    SELECT src_isp AS value, SUM(times_seen) AS cnt
+                                    FROM source_details
+                                    WHERE src_isp IS NOT NULL AND src_isp != ''
+                                    GROUP BY src_isp
+                                    ORDER BY cnt DESC, value ASC
+                                    LIMIT 1
+                                ),
+                                top_country AS (
+                                    SELECT src_country AS value, SUM(times_seen) AS cnt
+                                    FROM source_details
+                                    WHERE src_country IS NOT NULL AND src_country != ''
+                                    GROUP BY src_country
+                                    ORDER BY cnt DESC, value ASC
+                                    LIMIT 1
+                                )
+                                SELECT
+                                    (SELECT value FROM top_src_host) AS top_src,
+                                    (SELECT value FROM top_asnum) AS top_as,
+                                    (SELECT value FROM top_isp) AS top_isp,
+                                    (SELECT value FROM top_country) AS top_country
+                                """)
+                row = await cur.fetchone()
+                if row:
+                    columns = [desc[0] for desc in cur.description]
+                    top_stats = dict(zip(columns, row))
+                else:
+                    top_stats = {}
 
-        # Top username and password from webhook_logs
-        cur.execute("""
-            WITH
-            top_username AS (
-                SELECT logdata_username AS value, COUNT(*) AS cnt
-                FROM webhook_logs
-                WHERE logdata_username IS NOT NULL AND logdata_username != ''
-                GROUP BY logdata_username
-                ORDER BY cnt DESC, value ASC
-                LIMIT 1
-            ),
-            top_password AS (
-                SELECT logdata_password AS value, COUNT(*) AS cnt
-                FROM webhook_logs
-                WHERE logdata_password IS NOT NULL AND logdata_password != ''
-                GROUP BY logdata_password
-                ORDER BY cnt DESC, value ASC
-                LIMIT 1
-            ),
-            top_node AS (
-                SELECT node_id AS value, COUNT(*) AS cnt
-                FROM webhook_logs
-                WHERE node_id IS NOT NULL AND node_id != ''
-                GROUP BY node_id
-                ORDER BY cnt DESC, value ASC
-                LIMIT 1
-            )
-            SELECT
-                (SELECT value FROM top_username) AS top_username,
-                (SELECT value FROM top_password) AS top_password,
-                (SELECT value FROM top_node) AS top_node
-        """)
-        row = cur.fetchone()
-        if row:
-            top_stats.update(row)
+                await cur.execute("""
+                            WITH
+                            top_username AS (
+                                 SELECT logdata_username AS value, COUNT(*) AS cnt
+                                 FROM webhook_logs
+                                 WHERE logdata_username IS NOT NULL AND logdata_username != ''
+                                 GROUP BY logdata_username
+                                 ORDER BY cnt DESC, value ASC
+                                 LIMIT 1
+                             ),
+                             top_password AS (
+                                 SELECT logdata_password AS value, COUNT(*) AS cnt
+                                 FROM webhook_logs
+                                 WHERE logdata_password IS NOT NULL AND logdata_password != ''
+                                 GROUP BY logdata_password
+                                 ORDER BY cnt DESC, value ASC
+                                 LIMIT 1
+                             ),
+                             top_node AS (
+                                 SELECT node_id AS value, COUNT(*) AS cnt
+                                 FROM webhook_logs
+                                 WHERE node_id IS NOT NULL AND node_id != ''
+                                 GROUP BY node_id
+                                 ORDER BY cnt DESC, value ASC
+                                 LIMIT 1
+                             )
+                             SELECT
+                                 (SELECT value FROM top_username) AS top_username,
+                                 (SELECT value FROM top_password) AS top_password,
+                                 (SELECT value FROM top_node) AS top_node
+                            """)
+                row = await cur.fetchone()
+                if row:
+                    columns = [desc[0] for desc in cur.description]
+                    row_dict = dict(zip(columns, row))
+                    top_stats.update(row_dict)
 
-        cur.close()
-        release_db_connection(conn)
-        return jsonify(top_stats)
+                return JSONResponse(content=top_stats, status_code=200)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Failed to retrieve top stats: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# Serve React build
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve_react(path):
-    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    else:
-        return send_from_directory(app.static_folder, 'index.html')
+@app.get("/", include_in_schema=False)
+async def _index():
+    return FileResponse(os.path.join(_build_dir, "index.html"))
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8081)
+@app.get("/{full_path:path}", include_in_schema=False)
+async def _spa_fallback(full_path: str):
+    candidate = os.path.join(_build_dir, full_path)
+    # If the requested file exists in the build directory, return it (allows asset requests).
+    if full_path and os.path.exists(candidate) and os.path.isfile(candidate):
+        return FileResponse(candidate)
+    # Otherwise return index.html so the SPA client router can handle the path.
+    return FileResponse(os.path.join(_build_dir, "index.html"))
+
+if __name__ == "__main__":
+    # run with an ASGI server for FastAPI
+    uvicorn.run("main2:app", host="0.0.0.0", port=8081, reload=False)
