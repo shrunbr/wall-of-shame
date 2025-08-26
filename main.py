@@ -457,4 +457,4 @@ async def _spa_fallback(full_path: str):
 
 if __name__ == "__main__":
     # run with an ASGI server for FastAPI
-    uvicorn.run("main2:app", host="0.0.0.0", port=8081, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=8081, reload=False)
