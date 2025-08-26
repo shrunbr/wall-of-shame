@@ -1,7 +1,7 @@
 services:
   postgres:
     container_name: wos-postgres
-    image: postgres:latest
+    image: postgres:17.6-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
