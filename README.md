@@ -16,10 +16,9 @@
 
 ## Technologies
 
-- **Backend:** OpenCanary, Python, Flask, PostgreSQL, psycopg2, requests
+- **Backend:** OpenCanary, FastAPI (Python), PostgreSQL
 - **Frontend:** React (JavaScript)
 - **GeoIP:** ip-api.com
-- **Deployment:** Docker
 
 ## Usage
 
