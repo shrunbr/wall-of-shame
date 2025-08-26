@@ -10,20 +10,58 @@ import requests
 import ipaddress
 from datetime import datetime, timezone
 from psycopg2.extras import RealDictCursor
+from psycopg2.pool import ThreadedConnectionPool
 
 app = Flask(__name__, static_folder='frontend/build', static_url_path='/')
 
 load_dotenv()
 
+# DB Connection Pool Globals
+_db_pool = None
+_DB_POOL_MIN = 1
+_DB_POOL_MAX = 10
+
+def init_db_pool():
+    global _db_pool
+    if _db_pool is None:
+        _db_pool = ThreadedConnectionPool(
+            minconn=_DB_POOL_MIN,
+            maxconn=_DB_POOL_MAX,
+            dbname=os.getenv("POSTGRES_DB"),
+            user=os.getenv("POSTGRES_USER"),
+            password=os.getenv("POSTGRES_PASSWORD"),
+            host=os.getenv("POSTGRES_HOST"),
+            port=os.getenv("POSTGRES_PORT"),
+            cursor_factory=RealDictCursor
+        )
+
 def get_db_connection():
-    return psycopg2.connect(
-        dbname=os.getenv("POSTGRES_DB"),
-        user=os.getenv("POSTGRES_USER"),
-        password=os.getenv("POSTGRES_PASSWORD"),
-        host=os.getenv("POSTGRES_HOST"),
-        port=os.getenv("POSTGRES_PORT"),
-        cursor_factory=RealDictCursor
-    )
+    """
+    Return a pooled connection. Initializes the pool lazily.
+    Caller should release connections via release_db_connection(conn).
+    """
+    init_db_pool()
+    return _db_pool.getconn()
+
+def release_db_connection(conn, close=False):
+    """
+    Return connection to pool. If close=True, actually close the physical connection
+    instead of returning it to the pool.
+    """
+    if not conn:
+        return
+    init_db_pool()
+    try:
+        if close:
+            _db_pool.putconn(conn, close=True)
+        else:
+            _db_pool.putconn(conn)
+    except Exception:
+        try:
+            # fallback to closing the connection if returning fails
+            conn.close()
+        except Exception:
+            pass
 
 # Rate limit / caching / duplicate guard for Geo lookups
 #ENABLE_GLOBAL_COLLECTOR = str(os.getenv("ENABLE_GLOBAL_COLLECTOR", "false")).lower() not in ("1", "true", "yes")
@@ -194,7 +232,7 @@ def _geo_worker(ip, event):
             conn.commit()
         finally:
             try:
-                conn.close()
+                release_db_connection(conn)
             except Exception:
                 pass
     finally:
@@ -265,7 +303,7 @@ def webhook():
         ))
         conn.commit()
         cur.close()
-        conn.close()
+        release_db_connection(conn)
     except Exception as e:
         return jsonify({"status": "error", "message": f"DB error: {str(e)}"}), 500
     
@@ -291,7 +329,7 @@ def get_logs():
         cur.execute("SELECT * FROM webhook_logs")
         logs = cur.fetchall()
         cur.close()
-        conn.close()
+        release_db_connection(conn)
         return jsonify({'logs': logs})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -305,7 +343,7 @@ def get_source_details(ip):
         cur.execute("SELECT * FROM source_details WHERE src_host = %s", (ip,))
         row = cur.fetchone()
         cur.close()
-        conn.close()
+        release_db_connection(conn)
         if row:
             return jsonify(row)
         else:
@@ -330,7 +368,7 @@ def get_source_details_batch():
         """, (ips,))
         rows = cur.fetchall()
         cur.close()
-        conn.close()
+        release_db_connection(conn)
         # Map: ip -> row (or None)
         result = {ip: None for ip in ips}
         for row in rows:
@@ -425,7 +463,7 @@ def get_top_stats():
             top_stats.update(row)
 
         cur.close()
-        conn.close()
+        release_db_connection(conn)
         return jsonify(top_stats)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
