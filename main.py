@@ -26,8 +26,8 @@ def get_db_connection():
     )
 
 # Rate limit / caching / duplicate guard for Geo lookups
-ENABLE_GLOBAL_COLLECTOR = str(os.getenv("ENABLE_GLOBAL_COLLECTOR", "false")).lower() not in ("1", "true", "yes")
-GLOBAL_COLLECTOR_URL = os.getenv("GLOBAL_COLLECTOR_URL", "https://shame.shrunbr.dev/api/webhook")
+#ENABLE_GLOBAL_COLLECTOR = str(os.getenv("ENABLE_GLOBAL_COLLECTOR", "false")).lower() not in ("1", "true", "yes")
+#GLOBAL_COLLECTOR_URL = os.getenv("GLOBAL_COLLECTOR_URL", "https://shame.shrunbr.dev/api/webhook")
 _IP_API_FIELDS = "17039359"
 _RATE_LIMIT = 45  # per 60 seconds for this server
 _call_times = []
