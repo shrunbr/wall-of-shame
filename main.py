@@ -6,6 +6,7 @@ import re
 import requests
 import time
 import logging
+import json
 from decimal import Decimal
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
@@ -246,21 +247,48 @@ def serialize_datetimes(obj):
 
 @app.post("/api/webhook")
 async def webhook(request: Request, background: BackgroundTasks):
+    data = None
+
+    # Try JSON parsing first, useful for direct API testing
     try:
-        data = await request.json()
-    except Exception:
-        # fallback: if clients send form-encoded like before, try to parse raw body
         body = await request.body()
+        if body:
+            try:
+                data = await request.json()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # If not JSON, try as form, how OpenCanary sends the data
+    if data is None:
         try:
-            import json as _json
-            data = _json.loads(body.decode("utf-8") or "{}")
-        except Exception:
-            return JSONResponse(content={"status": "error", "message": "Invalid JSON"}, status_code=400)
+            form = await request.form()
+            if "message" in form:
+                try:
+                    data = json.loads(form["message"])
+                except Exception as e:
+                    return JSONResponse(
+                        content={"status": "error", "message": f"Failed to parse form data: {e}"},
+                        status_code=400,
+                    )
+            else:
+                return JSONResponse(
+                    content={"status": "error", "message": "No 'message' field in form data."},
+                    status_code=400,
+                )
+        except Exception as e:
+            return JSONResponse(
+                content={"status": "error", "message": f"Failed to read form data: {e}"},
+                status_code=400,
+            )
 
-    if data.get("src_host") == "":
-        return JSONResponse(content={"status": "error", "message": "src_host is not defined."}, status_code=400)
+    if not data or data.get("src_host") == "":
+        return JSONResponse(
+            content={"status": "error", "message": "src_host is not defined."},
+            status_code=400,
+        )
 
-    # async DB insert using psycopg_pool.AsyncConnectionPool
     pool = request.app.state.db_pool
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
