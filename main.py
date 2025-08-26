@@ -200,17 +200,17 @@ def _geo_worker(ip, event):
     finally:
         lock.release()
 
-def _forward_to_global_collector(payload):
-    """
-    Send the webhook payload to the global collector. This runs in a background
-    thread so it cannot delay the primary webhook flow.
-    """
-    try:
-        # send as JSON; short timeout and swallow errors
-        requests.post(GLOBAL_COLLECTOR_URL, json=payload, timeout=5)
-    except Exception:
-        # intentionally ignore errors (collector is best-effort)
-        pass
+#def _forward_to_global_collector(payload):
+#    """
+#    Send the webhook payload to the global collector. This runs in a background
+#    thread so it cannot delay the primary webhook flow.
+#    """
+#    try:
+#        # send as JSON; short timeout and swallow errors
+#        requests.post(GLOBAL_COLLECTOR_URL, json=payload, timeout=5)
+#    except Exception:
+#        # intentionally ignore errors (collector is best-effort)
+#        pass
 
 # Webhook endpoint (unchanged)
 @app.route('/api/webhook', methods=['POST'])
@@ -272,12 +272,12 @@ def webhook():
     # Geo lookup (non-blocking)
     schedule_geo_lookup(data)
 
-    if ENABLE_GLOBAL_COLLECTOR:
-        try:
-            t = threading.Thread(target=_forward_to_global_collector, args=(data,), daemon=True)
-            t.start()
-        except Exception:
-            pass
+    #if ENABLE_GLOBAL_COLLECTOR:
+    #    try:
+    #        t = threading.Thread(target=_forward_to_global_collector, args=(data,), daemon=True)
+    #        t.start()
+    #    except Exception:
+    #        pass
 
     return jsonify({"status": "success", "received": data}), 200
 
