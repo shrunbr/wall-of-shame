@@ -1,8 +1,12 @@
 FROM python:3.11-slim
+COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
+# Copy files to container
+ADD . /app
 
 # Set workdir
 WORKDIR /app
@@ -14,26 +18,15 @@ RUN apt-get update && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# Install requirements with uv
+RUN uv sync --locked
 
 # Copy frontend code and build it
-COPY frontend ./frontend
 WORKDIR /app/frontend
 RUN npm install && npm run build --silent
 
-# Copy backend code and built frontend to the right place
+# Set workdir back to /app
 WORKDIR /app
-COPY . .
-
-# Expose the port Flask runs on
-EXPOSE 8081
-
-# Set environment variables for Flask
-ENV FLASK_APP=main.py
-ENV FLASK_RUN_HOST=0.0.0.0
-ENV FLASK_RUN_PORT=8081
 
 # Start the app
-CMD ["python", "main.py"]
+CMD ["uv", "run", "main.py"]
