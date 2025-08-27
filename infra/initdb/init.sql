@@ -45,3 +45,5 @@ CREATE TABLE IF NOT EXISTS source_details (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_source_details_src_host ON source_details (src_host);
+CREATE INDEX IF NOT EXISTS idx_webhook_logs_utc_time ON webhook_logs (utc_time DESC);
+CREATE INDEX IF NOT EXISTS idx_webhook_logs_src_host ON webhook_logs (src_host);
