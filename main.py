@@ -3,7 +3,6 @@ import os
 import ipaddress
 import threading
 import re
-import requests
 import time
 import logging
 import json
@@ -15,12 +14,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
-from psycopg_pool import AsyncConnectionPool, pool
+from psycopg_pool import AsyncConnectionPool
 import uvicorn
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-#logging.getLogger("httpx").setLevel(logging.WARNING)
+# logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 @asynccontextmanager
 async def lifespan(app):
@@ -36,7 +36,7 @@ async def lifespan(app):
         conninfo=dsn,
         min_size=int(os.getenv("DB_POOL_MIN", "1")),
         max_size=int(os.getenv("DB_POOL_MAX", "10")),
-        open=False
+        open=False,
     )
     # explicitly open the pool to avoid the deprecation warning
     await pool.open()
@@ -48,15 +48,18 @@ async def lifespan(app):
         # close the pool on shutdown
         await app.state.db_pool.close()
 
+
 app = FastAPI(lifespan=lifespan)
 load_dotenv()
 
 _build_dir = os.path.join(os.path.dirname(__file__), "frontend", "build")
-app.mount("/static", StaticFiles(directory=os.path.join(_build_dir, "static")), name="static")
+app.mount(
+    "/static", StaticFiles(directory=os.path.join(_build_dir, "static")), name="static"
+)
 
 # Rate limit / caching / duplicate guard for Geo lookups
-#ENABLE_GLOBAL_COLLECTOR = str(os.getenv("ENABLE_GLOBAL_COLLECTOR", "false")).lower() not in ("1", "true", "yes")
-#GLOBAL_COLLECTOR_URL = os.getenv("GLOBAL_COLLECTOR_URL", "https://shame.shrunbr.dev/api/webhook")
+# ENABLE_GLOBAL_COLLECTOR = str(os.getenv("ENABLE_GLOBAL_COLLECTOR", "false")).lower() not in ("1", "true", "yes")
+# GLOBAL_COLLECTOR_URL = os.getenv("GLOBAL_COLLECTOR_URL", "https://shame.shrunbr.dev/api/webhook")
 _IP_API_FIELDS = "17039359"
 _RATE_LIMIT = 45  # per 60 seconds for this server
 _call_times = []
@@ -64,7 +67,7 @@ _call_lock = threading.Lock()
 
 _ip_locks = {}
 _ip_locks_lock = threading.Lock()
-_as_regex = re.compile(r'^AS(\d+)\s*(.*)$')
+_as_regex = re.compile(r"^AS(\d+)\s*(.*)$")
 
 _GEO_LOOKUP_SEMAPHORE = asyncio.Semaphore(5)
 
@@ -75,6 +78,7 @@ _EXCLUDED_NETS_V4 = [
     ipaddress.ip_network("127.0.0.0/8"),
     ipaddress.ip_network("100.64.0.0/10"),  # CGNAT
 ]
+
 
 def _is_public_candidate(ip_str: str) -> bool:
     """
@@ -90,10 +94,17 @@ def _is_public_candidate(ip_str: str) -> bool:
             if ip_obj in net:
                 return False
     # Generic exclusions
-    if (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or
-        ip_obj.is_multicast or ip_obj.is_reserved or ip_obj.is_unspecified):
+    if (
+        ip_obj.is_private
+        or ip_obj.is_loopback
+        or ip_obj.is_link_local
+        or ip_obj.is_multicast
+        or ip_obj.is_reserved
+        or ip_obj.is_unspecified
+    ):
         return False
     return True
+
 
 def _acquire_ip_lock(ip):
     with _ip_locks_lock:
@@ -102,6 +113,7 @@ def _acquire_ip_lock(ip):
             lock = asyncio.Lock()
             _ip_locks[ip] = lock
     return lock
+
 
 def _within_rate_limit():
     now = time.time()
@@ -113,11 +125,13 @@ def _within_rate_limit():
         _call_times.append(now)
         return True
 
+
 async def _ip_exists_async(conn, ip):
     async with conn.cursor() as c:
         await c.execute("SELECT 1 FROM source_details WHERE src_host=%s LIMIT 1", (ip,))
         row = await c.fetchone()
         return row is not None
+
 
 async def _insert_geo_row_async(conn, base, geo):
     asnum = None
@@ -129,7 +143,7 @@ async def _insert_geo_row_async(conn, base, geo):
                 asnum = int(m.group(1))
             except ValueError:
                 asnum = None
-            asorg = (m.group(2) or None)
+            asorg = m.group(2) or None
         else:
             asorg = geo.get("as")
 
@@ -156,11 +170,12 @@ async def _insert_geo_row_async(conn, base, geo):
         "src_reversedns": geo.get("reverse") if geo else None,
         "src_mobile": geo.get("mobile") if geo else None,
         "src_proxy": geo.get("proxy") if geo else None,
-        "src_hosting": geo.get("hosting") if geo else None
+        "src_hosting": geo.get("hosting") if geo else None,
     }
 
     async with conn.cursor() as cur:
-        await cur.execute("""
+        await cur.execute(
+            """
             INSERT INTO source_details (
                 first_seen, last_seen, times_seen,
                 src_host, src_country, src_isocountrycode, src_region, src_regionname, src_city, src_zip,
@@ -178,7 +193,10 @@ async def _insert_geo_row_async(conn, base, geo):
             DO UPDATE SET
                 last_seen = GREATEST(source_details.last_seen, EXCLUDED.last_seen),
                 times_seen = source_details.times_seen + 1
-        """, with_params)
+        """,
+            with_params,
+        )
+
 
 async def _fetch_geo_async(ip):
     if not _within_rate_limit():
@@ -194,6 +212,7 @@ async def _fetch_geo_async(ip):
         logger.warning(f"GeoIP lookup failed for {ip}: {e}")
     return None
 
+
 def schedule_geo_lookup(event, background: BackgroundTasks = None, app=None):
     ip = event.get("src_host")
     if not ip:
@@ -208,6 +227,7 @@ def schedule_geo_lookup(event, background: BackgroundTasks = None, app=None):
     except Exception as e:
         logger.error(f"Failed to schedule background task: {e}")
         return
+
 
 async def _geo_worker_async(app, ip, event):
     lock = _acquire_ip_lock(ip)
@@ -232,7 +252,8 @@ async def _geo_worker_async(app, ip, event):
             logger.warning(f"Geo worker for {ip} took {elapsed:.2f}s")
         logger.info(f"Geo worker completed for {ip}")
 
-#def _forward_to_global_collector(payload):
+
+# def _forward_to_global_collector(payload):
 #    """
 #    Send the webhook payload to the global collector. This runs in a background
 #    thread so it cannot delay the primary webhook flow.
@@ -244,17 +265,19 @@ async def _geo_worker_async(app, ip, event):
 #        # intentionally ignore errors (collector is best-effort)
 #        pass
 
+
 def serialize_datetimes(obj):
     if isinstance(obj, dict):
         return {k: serialize_datetimes(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [serialize_datetimes(i) for i in obj]
     elif isinstance(obj, datetime):
-        return obj.strftime('%Y-%m-%d %H:%M:%S %z')
+        return obj.strftime("%Y-%m-%d %H:%M:%S %z")
     elif isinstance(obj, Decimal):
         return float(obj)
     else:
         return obj
+
 
 @app.post("/api/webhook")
 async def webhook(request: Request, background: BackgroundTasks):
@@ -280,17 +303,26 @@ async def webhook(request: Request, background: BackgroundTasks):
                     data = json.loads(form["message"])
                 except Exception as e:
                     return JSONResponse(
-                        content={"status": "error", "message": f"Failed to parse form data: {e}"},
+                        content={
+                            "status": "error",
+                            "message": f"Failed to parse form data: {e}",
+                        },
                         status_code=400,
                     )
             else:
                 return JSONResponse(
-                    content={"status": "error", "message": "No 'message' field in form data."},
+                    content={
+                        "status": "error",
+                        "message": "No 'message' field in form data.",
+                    },
                     status_code=400,
                 )
         except Exception as e:
             return JSONResponse(
-                content={"status": "error", "message": f"Failed to read form data: {e}"},
+                content={
+                    "status": "error",
+                    "message": f"Failed to read form data: {e}",
+                },
                 status_code=400,
             )
 
@@ -304,39 +336,47 @@ async def webhook(request: Request, background: BackgroundTasks):
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             logdata = data.get("logdata", {}) or {}
-            await cur.execute("""
+            await cur.execute(
+                """
                 INSERT INTO webhook_logs (
                     dst_host, dst_port, local_time, local_time_adjusted, logtype, node_id,
                     src_host, src_port, utc_time,
                     logdata_hostname, logdata_path, logdata_useragent, logdata_localversion, logdata_password, logdata_remoteversion, logdata_username, logdata_session
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                data.get("dst_host"),
-                data.get("dst_port"),
-                data.get("local_time"),
-                data.get("local_time_adjusted"),
-                data.get("logtype"),
-                data.get("node_id"),
-                data.get("src_host"),
-                data.get("src_port"),
-                data.get("utc_time"),
-                logdata.get("HOSTNAME"),
-                logdata.get("PATH"),
-                logdata.get("USERAGENT"),
-                logdata.get("LOCALVERSION"),
-                logdata.get("PASSWORD"),
-                logdata.get("REMOTEVERSION"),
-                logdata.get("USERNAME"),
-                logdata.get("SESSION"),
-            ))
+            """,
+                (
+                    data.get("dst_host"),
+                    data.get("dst_port"),
+                    data.get("local_time"),
+                    data.get("local_time_adjusted"),
+                    data.get("logtype"),
+                    data.get("node_id"),
+                    data.get("src_host"),
+                    data.get("src_port"),
+                    data.get("utc_time"),
+                    logdata.get("HOSTNAME"),
+                    logdata.get("PATH"),
+                    logdata.get("USERAGENT"),
+                    logdata.get("LOCALVERSION"),
+                    logdata.get("PASSWORD"),
+                    logdata.get("REMOTEVERSION"),
+                    logdata.get("USERNAME"),
+                    logdata.get("SESSION"),
+                ),
+            )
         await conn.commit()
 
     schedule_geo_lookup(data, background=background, app=request.app)
 
-    return JSONResponse(content={"status": "success", "received": data}, status_code=200)
+    return JSONResponse(
+        content={"status": "success", "received": data}, status_code=200
+    )
 
-@app.get('/api/logs')
-async def get_logs(request: Request, page: int = 1, per_page: int = 10, src: str | None = None):
+
+@app.get("/api/logs")
+async def get_logs(
+    request: Request, page: int = 1, per_page: int = 10, src: str | None = None
+):
     """
     If `src` is provided: return logs for that src_host (most recent first).
     Otherwise: return paginated list of distinct src_host with last_seen and count.
@@ -351,77 +391,120 @@ async def get_logs(request: Request, page: int = 1, per_page: int = 10, src: str
             async with conn.cursor() as cur:
                 if src:
                     # Return logs for a single source (most recent first)
-                    await cur.execute("""
+                    await cur.execute(
+                        """
                         SELECT * FROM webhook_logs
                         WHERE src_host = %s
                         ORDER BY utc_time DESC NULLS LAST
-                    """, (src,))
+                    """,
+                        (src,),
+                    )
                     rows = await cur.fetchall()
                     columns = [desc[0] for desc in cur.description]
                     data = [dict(zip(columns, row)) for row in rows]
                     data = serialize_datetimes(data)
-                    return JSONResponse(content={"status": "success", "data": data}, status_code=200)
+                    return JSONResponse(
+                        content={"status": "success", "data": data}, status_code=200
+                    )
 
                 # Total distinct sources
-                await cur.execute("SELECT COUNT(DISTINCT src_host) FROM webhook_logs WHERE src_host IS NOT NULL AND src_host != ''")
+                await cur.execute(
+                    "SELECT COUNT(DISTINCT src_host) FROM webhook_logs WHERE src_host IS NOT NULL AND src_host != ''"
+                )
                 total_row = await cur.fetchone()
                 total = total_row[0] if total_row else 0
 
                 offset = (page - 1) * per_page
                 # Return one row per src_host: latest utc_time and count
-                await cur.execute("""
+                await cur.execute(
+                    """
                     SELECT src_host, MAX(utc_time) AS last_seen, COUNT(*) AS times_seen
                     FROM webhook_logs
                     WHERE src_host IS NOT NULL AND src_host != ''
                     GROUP BY src_host
                     ORDER BY last_seen DESC NULLS LAST
                     LIMIT %s OFFSET %s
-                """, (per_page, offset))
+                """,
+                    (per_page, offset),
+                )
                 rows = await cur.fetchall()
                 columns = [desc[0] for desc in cur.description]
                 data = [dict(zip(columns, row)) for row in rows]
                 data = serialize_datetimes(data)
-                return JSONResponse(content={"status": "success", "data": data, "total": total, "page": page, "per_page": per_page}, status_code=200)
+                return JSONResponse(
+                    content={
+                        "status": "success",
+                        "data": data,
+                        "total": total,
+                        "page": page,
+                        "per_page": per_page,
+                    },
+                    status_code=200,
+                )
     except Exception as e:
         logger.error(f"Failed to retrieve logs: {e}")
-        return JSONResponse(content={"status": "error", "message": "Failed to retrieve logs"}, status_code=500)
+        return JSONResponse(
+            content={"status": "error", "message": "Failed to retrieve logs"},
+            status_code=500,
+        )
 
-@app.get('/api/source_details/{src_host}')
+
+@app.get("/api/source_details/{src_host}")
 async def get_source_details(src_host: str, request: Request):
     try:
         pool = request.app.state.db_pool
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute("SELECT * FROM source_details WHERE src_host = %s", (src_host,))
+                await cur.execute(
+                    "SELECT * FROM source_details WHERE src_host = %s", (src_host,)
+                )
                 rows = await cur.fetchall()
                 columns = [desc[0] for desc in cur.description]
                 data = [dict(zip(columns, row)) for row in rows]
                 data = serialize_datetimes(data)
-                return JSONResponse(content={"status": "success", "data": data}, status_code=200)
+                return JSONResponse(
+                    content={"status": "success", "data": data}, status_code=200
+                )
     except Exception as e:
         logger.error(f"Failed to retrieve source details for {src_host}: {e}")
-        return JSONResponse(content={"status": "error", "message": "Failed to retrieve source details"}, status_code=500)
+        return JSONResponse(
+            content={"status": "error", "message": "Failed to retrieve source details"},
+            status_code=500,
+        )
 
-@app.post('/api/source_details/batch')
+
+@app.post("/api/source_details/batch")
 async def get_source_details_batch(request: Request):
     try:
         data = await request.json()
-        ips = data.get('ips', [])
+        ips = data.get("ips", [])
         if not ips:
-            return JSONResponse(content={"status": "error", "message": "ips is required"}, status_code=400)
+            return JSONResponse(
+                content={"status": "error", "message": "ips is required"},
+                status_code=400,
+            )
 
         pool = request.app.state.db_pool
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute("SELECT src_host, src_isocountrycode FROM source_details WHERE src_host = ANY(%s)", (ips,))
+                await cur.execute(
+                    "SELECT src_host, src_isocountrycode FROM source_details WHERE src_host = ANY(%s)",
+                    (ips,),
+                )
                 rows = await cur.fetchall()
                 result = {row[0]: row[1] for row in rows}
-                return JSONResponse(content={"status": "success", "data": result}, status_code=200)
+                return JSONResponse(
+                    content={"status": "success", "data": result}, status_code=200
+                )
     except Exception as e:
         logger.error(f"Failed to retrieve source details for batch: {e}")
-        return JSONResponse(content={"status": "error", "message": "Failed to retrieve source details"}, status_code=500)
+        return JSONResponse(
+            content={"status": "error", "message": "Failed to retrieve source details"},
+            status_code=500,
+        )
 
-@app.get('/api/topstats')
+
+@app.get("/api/topstats")
 async def get_top_stats(request: Request):
     try:
         pool = request.app.state.db_pool
@@ -518,9 +601,11 @@ async def get_top_stats(request: Request):
         logger.error(f"Failed to retrieve top stats: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+
 @app.get("/", include_in_schema=False)
 async def _index():
     return FileResponse(os.path.join(_build_dir, "index.html"))
+
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def _spa_fallback(full_path: str):
@@ -530,6 +615,7 @@ async def _spa_fallback(full_path: str):
         return FileResponse(candidate)
     # Otherwise return index.html so the SPA client router can handle the path.
     return FileResponse(os.path.join(_build_dir, "index.html"))
+
 
 if __name__ == "__main__":
     # run with an ASGI server for FastAPI
