@@ -22,6 +22,15 @@ import {
 } from '@mui/material';
 import InfoIcon from '@mui/icons-material/Info';
 
+import PublicIcon from '@mui/icons-material/Public';
+import DnsIcon from '@mui/icons-material/Dns';
+import FlagIcon from '@mui/icons-material/Flag';
+import PersonIcon from '@mui/icons-material/Person';
+import LockIcon from '@mui/icons-material/Lock';
+import DevicesIcon from '@mui/icons-material/Devices';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import VpnKeyIcon from '@mui/icons-material/VpnKey';
+
 // GitHub SVG icon (inline, accessible)
 function GitHubIcon({ size = 24 }) {
   return (
@@ -146,10 +155,10 @@ export default function App() {
   };
 
   // Top stats from API
-  const [topStats, setTopStats] = useState({});
+  const [apiStats, setApiStats] = useState({});
   useEffect(() => {
-    axios.get('/api/topstats').then(res => {
-      setTopStats(res.data.logs || res.data.data || res.data || []);
+    axios.get('/api/stats').then(res => {
+      setApiStats(res.data.logs || res.data.data || res.data || []);
     });
   }, []);
 
@@ -160,6 +169,90 @@ export default function App() {
       flexDirection: 'column',
       background: 'linear-gradient(135deg, #232526 0%, #414345 100%)',
     }}>
+      {/* Stats bar at the top */}
+      <Paper elevation={6} sx={{
+        width: { xs: '95%', sm: '70%', md: '50%' },
+        mx: 'auto',
+        mt: 6,
+        mb: 2,
+        p: 2,
+        borderRadius: 4,
+        background: 'rgba(255,255,255,0.97)',
+        boxShadow: 8,
+        display: 'flex',
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        position: 'relative',
+        zIndex: 2,
+      }}>
+        {/* Each stat in its own box with icon */}
+        <Box sx={{ minWidth: 110, textAlign: 'center', m: 1 }}>
+          <PublicIcon color="primary" fontSize="large" />
+          <Typography variant="subtitle2">Top Source IP</Typography>
+          <Box
+            component="span"
+            role={apiStats.top_src ? "button" : undefined}
+            tabIndex={apiStats.top_src ? 0 : -1}
+            onClick={() => apiStats.top_src && handleOpen(apiStats.top_src)}
+            onKeyDown={(e) => { if (apiStats.top_src && (e.key === 'Enter' || e.key === ' ')) handleOpen(apiStats.top_src); }}
+            sx={{ fontWeight: 600, cursor: apiStats.top_src ? 'pointer' : 'default', color: apiStats.top_src ? 'primary.main' : 'inherit', display: 'inline-block' }}
+            aria-label={apiStats.top_src ? `Open details for ${apiStats.top_src}` : undefined}
+          >
+            {apiStats.top_src || 'N/A'}
+          </Box>
+        </Box>
+        <Box sx={{ minWidth: 110, textAlign: 'center', m: 1 }}>
+          <DnsIcon color="primary" fontSize="large" />
+          <Typography variant="subtitle2">Top AS Number</Typography>
+          {apiStats.top_as ? (
+            <Box
+              component="a"
+              href={`https://bgp.he.net/AS${String(apiStats.top_as).replace(/^AS/i, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                fontWeight: 600,
+                color: 'primary.main',
+                textDecoration: 'none',
+                cursor: 'pointer',
+                display: 'inline-block'
+              }}
+              aria-label={`Open BGP information for AS${String(apiStats.top_as).replace(/^AS/i, '')}`}
+            >
+              {apiStats.top_as}
+            </Box>
+          ) : (
+            <Typography variant="body1" sx={{ fontWeight: 600 }}>{'N/A'}</Typography>
+          )}
+        </Box>
+        <Box sx={{ minWidth: 110, textAlign: 'center', m: 1 }}>
+          <FlagIcon color="primary" fontSize="large" />
+          <Typography variant="subtitle2">Top Country</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{apiStats.top_country || 'N/A'}</Typography>
+        </Box>
+        <Box sx={{ minWidth: 110, textAlign: 'center', m: 1 }}>
+          <AccountCircleIcon color="primary" fontSize="large" />
+          <Typography variant="subtitle2">Top Username</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{apiStats.top_username || 'N/A'}</Typography>
+        </Box>
+        <Box sx={{ minWidth: 110, textAlign: 'center', m: 1 }}>
+          <VpnKeyIcon color="primary" fontSize="large" />
+          <Typography variant="subtitle2">Top Password</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{apiStats.top_password || 'N/A'}</Typography>
+        </Box>
+        <Box sx={{ minWidth: 110, textAlign: 'center', m: 1 }}>
+          <DevicesIcon color="primary" fontSize="large" />
+          <Typography variant="subtitle2">Top Target Node</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{apiStats.top_node || 'N/A'}</Typography>
+        </Box>
+        <Box sx={{ minWidth: 110, textAlign: 'center', m: 1 }}>
+          <PersonIcon color="primary" fontSize="large" />
+          <Typography variant="subtitle2">Total Unique Sources</Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>{apiStats.total_unique_srcs || 'N/A'}</Typography>
+        </Box>
+      </Paper>
       <Box sx={{
         flex: '1 0 auto',
         display: 'flex',
@@ -171,7 +264,7 @@ export default function App() {
         mb: 4,
       }}>
         {/* Main logs list */}
-        <Paper elevation={6} sx={{ width: 600, maxWidth: '100%', p: 3, borderRadius: 4, background: 'rgba(255,255,255,0.95)', mr: 4 }}>
+        <Paper elevation={6} sx={{ width: 700, maxWidth: '100%', p: 3, borderRadius: 4, background: 'rgba(255,255,255,0.95)', mr: 4 }}>
         <Typography variant="h4" fontWeight={700} gutterBottom align="center" color="primary">
           Wall of Shame Logs
         </Typography>
@@ -222,67 +315,6 @@ export default function App() {
             showFirstButton
             showLastButton
           />
-        </Box>
-      </Paper>
-  {/* Top stats summary box */}
-  <Paper elevation={4} sx={{ minWidth: 280, maxWidth: 320, p: 3, borderRadius: 4, background: 'rgba(255,255,255,0.97)', alignSelf: 'flex-start', position: 'sticky', top: 32, height: 'fit-content', boxShadow: 6 }}>
-        <Typography variant="h6" fontWeight={700} gutterBottom color="primary">Top Stats</Typography>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2">Top Source IP</Typography>
-          <Box
-            component="span"
-            role={topStats.top_src ? "button" : undefined}
-            tabIndex={topStats.top_src ? 0 : -1}
-            onClick={() => topStats.top_src && handleOpen(topStats.top_src)}
-            onKeyDown={(e) => { if (topStats.top_src && (e.key === 'Enter' || e.key === ' ')) handleOpen(topStats.top_src); }}
-            sx={{ fontWeight: 600, cursor: topStats.top_src ? 'pointer' : 'default', color: topStats.top_src ? 'primary.main' : 'inherit', display: 'inline-block' }}
-            aria-label={topStats.top_src ? `Open details for ${topStats.top_src}` : undefined}
-          >
-            {topStats.top_src || 'N/A'}
-          </Box>
-        </Box>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2">Top AS Number</Typography>
-          {topStats.top_as ? (
-            <Box
-              component="a"
-              href={`https://bgp.he.net/AS${String(topStats.top_as).replace(/^AS/i, '')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={{
-                fontWeight: 600,
-                color: 'primary.main',
-                textDecoration: 'none',
-                cursor: 'pointer',
-                display: 'inline-block'
-              }}
-              aria-label={`Open BGP information for AS${String(topStats.top_as).replace(/^AS/i, '')}`}
-            >
-              {topStats.top_as}
-            </Box>
-          ) : (
-            <Typography variant="body1" sx={{ fontWeight: 600 }}>{'N/A'}</Typography>
-          )}
-        </Box>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2">Top ISP</Typography>
-          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_isp || 'N/A'}</Typography>
-        </Box>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2">Top Country</Typography>
-          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_country || 'N/A'}</Typography>
-        </Box>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2">Top Username</Typography>
-          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_username || 'N/A'}</Typography>
-        </Box>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2">Top Password</Typography>
-          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_password || 'N/A'}</Typography>
-        </Box>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2">Top Target Node</Typography>
-          <Typography variant="body1" sx={{ fontWeight: 600 }}>{topStats.top_node || 'N/A'}</Typography>
         </Box>
       </Paper>
   <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
