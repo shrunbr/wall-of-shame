@@ -99,9 +99,8 @@ def _acquire_ip_lock(ip):
     with _ip_locks_lock:
         lock = _ip_locks.get(ip)
         if not lock:
-            lock = threading.Lock()
+            lock = asyncio.Lock()
             _ip_locks[ip] = lock
-    lock.acquire()
     return lock
 
 def _within_rate_limit():
@@ -203,6 +202,7 @@ def schedule_geo_lookup(event, background: BackgroundTasks = None, app=None):
         return
 
     try:
+        logger.info(f"Scheduling geo lookup for {ip}")
         background.add_task(_geo_worker_async, app, ip, event)
         return
     except Exception as e:
@@ -212,23 +212,25 @@ def schedule_geo_lookup(event, background: BackgroundTasks = None, app=None):
 async def _geo_worker_async(app, ip, event):
     lock = _acquire_ip_lock(ip)
     start = time.monotonic()
+    logger.info(f"Geo worker scheduled for {ip}")
     try:
-        async with _GEO_LOOKUP_SEMAPHORE:
-            pool = app.state.db_pool
-            async with pool.connection() as conn:
-                exists = await _ip_exists_async(conn, ip)
-                geo = None
-                if not exists:
-                    geo = await _fetch_geo_async(ip)
-                await _insert_geo_row_async(conn, event, geo or {})
-                await conn.commit()
+        async with lock:
+            async with _GEO_LOOKUP_SEMAPHORE:
+                pool = app.state.db_pool
+                async with pool.connection() as conn:
+                    exists = await _ip_exists_async(conn, ip)
+                    geo = None
+                    if not exists:
+                        geo = await _fetch_geo_async(ip)
+                    await _insert_geo_row_async(conn, event, geo or {})
+                    await conn.commit()
     except Exception as e:
         logger.error(f"Geo worker failed for {ip}: {e}")
     finally:
         elapsed = time.monotonic() - start
         if elapsed > 2:
             logger.warning(f"Geo worker for {ip} took {elapsed:.2f}s")
-        lock.release()
+        logger.info(f"Geo worker completed for {ip}")
 
 #def _forward_to_global_collector(payload):
 #    """
