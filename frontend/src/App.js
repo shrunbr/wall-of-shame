@@ -26,48 +26,46 @@ import InfoIcon from '@mui/icons-material/Info';
 function GitHubIcon({ size = 24 }) {
   return (
     <svg height={size} width={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
-      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.01.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.11.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.01.08-2.12 0 0 .67-.21 2.0.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.11.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
     </svg>
   );
 }
 
-function groupLogsBySrcHost(logs) {
-  const groups = {};
-  logs.forEach(log => {
-    const src = log.src_host || 'Unknown';
-    if (!groups[src]) groups[src] = [];
-    groups[src].push(log);
-  });
-  // Sort each group by most recent
-  Object.values(groups).forEach(group => group.sort((a, b) => new Date(b.utc_time) - new Date(a.utc_time)));
-  return groups;
-}
-
 export default function App() {
-  const [logs, setLogs] = useState([]);
   const [grouped, setGrouped] = useState({});
   const [selectedSrc, setSelectedSrc] = useState(null);
   const [open, setOpen] = useState(false);
-  const [geo, setGeo] = useState({}); // { ip: { country: 'US', flag: '🇺🇸' } }
-  const [srcDetails, setSrcDetails] = useState(null); // detailed geo/AS info for selectedSrc
+  const [geo, setGeo] = useState({});
+  const [srcDetails, setSrcDetails] = useState(null);
   const [srcDetailsLoading, setSrcDetailsLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [srcList, setSrcList] = useState([]);
+  const [totalSrc, setTotalSrc] = useState(0);
+  const [logsForSrc, setLogsForSrc] = useState([]);
 
-  useEffect(() => {
-    axios.get('/api/logs').then(res => {
-      setLogs(res.data.logs || res.data.data || res.data || []);
-    });
-  }, []);
-
-  useEffect(() => {
-    setGrouped(groupLogsBySrcHost(logs));
-  }, [logs]);
-
-  // Fetch GeoIP/country data for all source IPs from backend in one batch
+  // Fetch paginated source list (server should return { data: [...], total: <int> })
   useEffect(() => {
     let cancelled = false;
-    const ips = Object.keys(grouped).filter(ip => ip && ip !== 'Unknown');
+    (async () => {
+      try {
+        const res = await axios.get('/api/logs', { params: { page, per_page: rowsPerPage } });
+        if (cancelled) return;
+        const payload = res.data || {};
+        setSrcList(payload.data || []);
+        setTotalSrc(Number(payload.total || (payload.data ? payload.data.length : 0)));
+      } catch (e) {
+        setSrcList([]);
+        setTotalSrc(0);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [page, rowsPerPage]);
+
+  // Fetch GeoIP/country data for visible source IPs in the current srcList (batch)
+  useEffect(() => {
+    let cancelled = false;
+    const ips = (srcList || []).map(item => item.src_host).filter(ip => ip && ip !== 'Unknown');
     if (ips.length === 0) return;
     const missing = ips.filter(ip => !geo[ip]);
     if (missing.length === 0) return;
@@ -98,35 +96,46 @@ export default function App() {
       }
     })();
     return () => { cancelled = true; };
-  }, [grouped]);
+  }, [srcList]);
 
   const handleOpen = async src => {
     setSelectedSrc(src);
     setSrcDetails(null);
+    setLogsForSrc([]);
     setSrcDetailsLoading(true);
     setOpen(true);
     try {
-      const res = await axios.get(`/api/source_details/${encodeURIComponent(src)}`);
-      const details = res.data.logs || res.data.data || res.data || [];
+      const [detailsRes, logsRes] = await Promise.all([
+        axios.get(`/api/source_details/${encodeURIComponent(src)}`),
+        axios.get('/api/logs', { params: { src } })
+      ]);
+      const details = detailsRes.data.logs || detailsRes.data.data || detailsRes.data || [];
       setSrcDetails(Array.isArray(details) ? details[0] : details);
+      const logs = logsRes.data.data || logsRes.data.logs || [];
+      setLogsForSrc(logs);
     } catch (e) {
       setSrcDetails(null);
+      setLogsForSrc([]);
     } finally {
       setSrcDetailsLoading(false);
     }
   };
-  const handleClose = () => setOpen(false);
 
-  // Sort groups by most recent log
-  const sortedSrcs = Object.keys(grouped).sort((a, b) => {
-    const aTime = grouped[a][0]?.utc_time || 0;
-    const bTime = grouped[b][0]?.utc_time || 0;
-    return new Date(bTime) - new Date(aTime);
+  const handleClose = () => {
+    setOpen(false);
+    setSelectedSrc(null);
+    setSrcDetails(null);
+    setLogsForSrc([]);
+  };
+
+  const sortedSrcs = [...(srcList || [])].sort((a, b) => {
+    const ta = a?.last_seen ? new Date(a.last_seen).getTime() : 0;
+    const tb = b?.last_seen ? new Date(b.last_seen).getTime() : 0;
+    return tb - ta;
   });
 
-  // Pagination logic
-  const totalPages = Math.ceil(sortedSrcs.length / rowsPerPage) || 1;
-  const pagedSrcs = sortedSrcs.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  const totalPages = Math.max(1, Math.ceil((totalSrc || srcList?.length || 0) / rowsPerPage));
+  const pagedSrcs = sortedSrcs;
 
   const handlePageChange = (event, value) => {
     setPage(value);
@@ -135,7 +144,6 @@ export default function App() {
     setRowsPerPage(Number(event.target.value));
     setPage(1);
   };
-
 
   // Top stats from API
   const [topStats, setTopStats] = useState({});
@@ -168,7 +176,8 @@ export default function App() {
           Wall of Shame Logs
         </Typography>
         <List>
-          {pagedSrcs.map(src => {
+          {pagedSrcs.map(item => {
+            const src = item.src_host;
             const meta = geo[src];
             return (
               <ListItem key={src} secondaryAction={
@@ -183,7 +192,7 @@ export default function App() {
                       {meta ? meta.flag : '…'}
                     </span>
                   </>}
-                  secondary={`Most recent: ${grouped[src][0]?.utc_time || 'N/A'}`}
+                  secondary={`Most recent: ${item.last_seen || 'N/A'}${item.times_seen ? ` — ${item.times_seen} hits` : ''}`}
                 />
               </ListItem>
             );
@@ -325,7 +334,7 @@ export default function App() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {(grouped[selectedSrc] || []).map((log, idx) => (
+                {(logsForSrc || []).map((log, idx) => (
                   <TableRow key={idx}>
                     <TableCell>{log.utc_time}</TableCell>
                     <TableCell>{log.node_id}</TableCell>
