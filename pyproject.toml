@@ -25,3 +25,8 @@ main = "main:app"
 Homepage = "https://github.com/shrunbr/wall-of-shame"
 Repository = "https://github.com/shrunbr/wall-of-shame"
 Issues = "https://github.com/shrunbr/wall-of-shame/issues"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.10",
+]
