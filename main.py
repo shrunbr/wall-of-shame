@@ -466,21 +466,23 @@ async def get_top_stats(request: Request):
                 await cur.execute("""
                             WITH
                             top_username AS (
-                                 SELECT logdata_username AS value, COUNT(*) AS cnt
-                                 FROM webhook_logs
-                                 WHERE logdata_username IS NOT NULL AND logdata_username != ''
-                                 GROUP BY logdata_username
-                                 ORDER BY cnt DESC, value ASC
-                                 LIMIT 1
-                             ),
+                                SELECT logdata_username AS value, COUNT(*) AS cnt
+                                FROM webhook_logs
+                                WHERE logdata_username IS NOT NULL
+                                  AND TRIM(logdata_username) != ''
+                                GROUP BY logdata_username
+                                ORDER BY cnt DESC, value ASC
+                                LIMIT 1
+                            ),
                              top_password AS (
-                                 SELECT logdata_password AS value, COUNT(*) AS cnt
-                                 FROM webhook_logs
-                                 WHERE logdata_password IS NOT NULL AND logdata_password != ''
-                                 GROUP BY logdata_password
-                                 ORDER BY cnt DESC, value ASC
-                                 LIMIT 1
-                             ),
+                                SELECT logdata_password AS value, COUNT(*) AS cnt
+                                FROM webhook_logs
+                                WHERE logdata_password IS NOT NULL
+                                  AND TRIM(logdata_password) != ''
+                                GROUP BY logdata_password
+                                ORDER BY cnt DESC, value ASC
+                                LIMIT 1
+                            ),
                              top_node AS (
                                  SELECT node_id AS value, COUNT(*) AS cnt
                                  FROM webhook_logs
