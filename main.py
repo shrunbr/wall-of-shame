@@ -504,8 +504,8 @@ async def get_source_details_batch(request: Request):
         )
 
 
-@app.get("/api/topstats")
-async def get_top_stats(request: Request):
+@app.get("/api/stats")
+async def get_stats(request: Request):
     try:
         pool = request.app.state.db_pool
         async with pool.connection() as conn:
@@ -556,6 +556,12 @@ async def get_top_stats(request: Request):
                     top_stats = dict(zip(columns, row))
                 else:
                     top_stats = {}
+                
+                await cur.execute(
+                    "SELECT COUNT(DISTINCT src_host) FROM webhook_logs WHERE src_host IS NOT NULL AND src_host != ''"
+                )
+                unique_src_count_row = await cur.fetchone()
+                top_stats["total_unique_srcs"] = unique_src_count_row[0] if unique_src_count_row else 0
 
                 await cur.execute("""
                             WITH
