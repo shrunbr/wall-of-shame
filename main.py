@@ -325,17 +325,52 @@ async def webhook(request: Request, background: BackgroundTasks):
     return JSONResponse(content={"status": "success", "received": data}, status_code=200)
 
 @app.get('/api/logs')
-async def get_logs(request: Request, background: BackgroundTasks):
+async def get_logs(request: Request, page: int = 1, per_page: int = 10, src: str | None = None):
+    """
+    If `src` is provided: return logs for that src_host (most recent first).
+    Otherwise: return paginated list of distinct src_host with last_seen and count.
+    Response:
+      { status: "success", data: [...], total: <int>, page: <int>, per_page: <int> }
+    """
     try:
+        per_page = max(1, min(int(per_page), 1000))
+        page = max(1, int(page))
         pool = request.app.state.db_pool
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute("SELECT * FROM webhook_logs")
+                if src:
+                    # Return logs for a single source (most recent first)
+                    await cur.execute("""
+                        SELECT * FROM webhook_logs
+                        WHERE src_host = %s
+                        ORDER BY utc_time DESC NULLS LAST
+                    """, (src,))
+                    rows = await cur.fetchall()
+                    columns = [desc[0] for desc in cur.description]
+                    data = [dict(zip(columns, row)) for row in rows]
+                    data = serialize_datetimes(data)
+                    return JSONResponse(content={"status": "success", "data": data}, status_code=200)
+
+                # Total distinct sources
+                await cur.execute("SELECT COUNT(DISTINCT src_host) FROM webhook_logs WHERE src_host IS NOT NULL AND src_host != ''")
+                total_row = await cur.fetchone()
+                total = total_row[0] if total_row else 0
+
+                offset = (page - 1) * per_page
+                # Return one row per src_host: latest utc_time and count
+                await cur.execute("""
+                    SELECT src_host, MAX(utc_time) AS last_seen, COUNT(*) AS times_seen
+                    FROM webhook_logs
+                    WHERE src_host IS NOT NULL AND src_host != ''
+                    GROUP BY src_host
+                    ORDER BY last_seen DESC NULLS LAST
+                    LIMIT %s OFFSET %s
+                """, (per_page, offset))
                 rows = await cur.fetchall()
                 columns = [desc[0] for desc in cur.description]
                 data = [dict(zip(columns, row)) for row in rows]
                 data = serialize_datetimes(data)
-                return JSONResponse(content={"status": "success", "data": data}, status_code=200)
+                return JSONResponse(content={"status": "success", "data": data, "total": total, "page": page, "per_page": per_page}, status_code=200)
     except Exception as e:
         logger.error(f"Failed to retrieve logs: {e}")
         return JSONResponse(content={"status": "error", "message": "Failed to retrieve logs"}, status_code=500)
