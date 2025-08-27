@@ -7,6 +7,7 @@ import requests
 import time
 import logging
 import json
+import httpx
 from decimal import Decimal
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +20,7 @@ import uvicorn
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 @asynccontextmanager
 async def lifespan(app):
@@ -63,6 +65,8 @@ _call_lock = threading.Lock()
 _ip_locks = {}
 _ip_locks_lock = threading.Lock()
 _as_regex = re.compile(r'^AS(\d+)\s*(.*)$')
+
+_GEO_LOOKUP_SEMAPHORE = asyncio.Semaphore(5)
 
 _EXCLUDED_NETS_V4 = [
     ipaddress.ip_network("10.0.0.0/8"),
@@ -177,17 +181,18 @@ async def _insert_geo_row_async(conn, base, geo):
                 times_seen = source_details.times_seen + 1
         """, with_params)
 
-def _fetch_geo(ip):
+async def _fetch_geo_async(ip):
     if not _within_rate_limit():
         return None
     try:
-        r = requests.get(f"http://ip-api.com/json/{ip}?fields={_IP_API_FIELDS}", timeout=5)
-        if r.status_code == 200:
-            j = r.json()
-            if j.get("status") == "success":
-                return j
-    except Exception:
-        pass
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(f"http://ip-api.com/json/{ip}?fields={_IP_API_FIELDS}")
+            if r.status_code == 200:
+                j = r.json()
+                if j.get("status") == "success":
+                    return j
+    except Exception as e:
+        logger.warning(f"GeoIP lookup failed for {ip}: {e}")
     return None
 
 def schedule_geo_lookup(event, background: BackgroundTasks = None, app=None):
@@ -206,19 +211,23 @@ def schedule_geo_lookup(event, background: BackgroundTasks = None, app=None):
 
 async def _geo_worker_async(app, ip, event):
     lock = _acquire_ip_lock(ip)
+    start = time.monotonic()
     try:
-        pool = app.state.db_pool
-        async with pool.connection() as conn:
-            # Decide whether to fetch geo (only if new IP)
-            exists = await _ip_exists_async(conn, ip)
-            geo = None
-            if not exists:
-                # _fetch_geo is blocking (requests); run in threadpool
-                geo = await asyncio.to_thread(_fetch_geo, ip)
-            # Upsert row (increments times_seen even if geo is None)
-            await _insert_geo_row_async(conn, event, geo or {})
-            await conn.commit()
+        async with _GEO_LOOKUP_SEMAPHORE:
+            pool = app.state.db_pool
+            async with pool.connection() as conn:
+                exists = await _ip_exists_async(conn, ip)
+                geo = None
+                if not exists:
+                    geo = await _fetch_geo_async(ip)
+                await _insert_geo_row_async(conn, event, geo or {})
+                await conn.commit()
+    except Exception as e:
+        logger.error(f"Geo worker failed for {ip}: {e}")
     finally:
+        elapsed = time.monotonic() - start
+        if elapsed > 2:
+            logger.warning(f"Geo worker for {ip} took {elapsed:.2f}s")
         lock.release()
 
 #def _forward_to_global_collector(payload):
