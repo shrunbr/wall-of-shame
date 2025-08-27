@@ -1,25 +1,23 @@
-FROM python:3.11-slim
+FROM python:3.11-alpine
+
+# Copy uv binary from multi-stage build
 COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Copy files to container
+# Install system dependencies (nodejs, npm, gcc, libpq)
+RUN apk add --no-cache gcc musl-dev libpq-dev curl nodejs npm
+
+# Copy app files
 ADD . /app
 
 # Set workdir
 WORKDIR /app
 
-# Install system dependencies (add nodejs and npm)
-RUN apt-get update && \
-    apt-get install -y gcc libpq-dev curl && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install requirements with uv
-RUN uv sync --locked
+# Install requirements with uv (ensure uv is executable)
+RUN chmod +x /bin/uv && uv sync --locked
 
 # Copy frontend code and build it
 WORKDIR /app/frontend
