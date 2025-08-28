@@ -1,0 +1,87 @@
+name: Code Testing
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version-file: 'pyproject.toml'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        version: '0.8.13'
+
+    - name: Install the project
+      run: uv sync --locked --all-extras --dev
+
+    - name: Set up Docker Compose
+      uses: docker/setup-compose-action@v1
+
+    - name: Startup containers
+      working-directory: infra
+      run: docker compose -f docker-compose.coverage-test.yml up -d
+
+    - name: Wait for Postgres to be ready
+      run: |
+        echo "Waiting for Postgres to be ready..."
+        for i in {1..20}; do
+          if docker exec wos-postgres pg_isready -U coverage-test -d coverage_test_db; then
+            echo "Postgres is ready!"
+            exit 0
+          fi
+          echo "Postgres is not ready yet. Waiting..."
+          sleep 5
+        done
+        echo "Postgres did not become ready in time."
+        exit 1
+
+    - name: Wait for web server to be ready
+      run: |
+        echo "Waiting for web server to be ready..."
+        for i in {1..20}; do
+          if curl -fsS http://localhost:8081/; then
+            echo "Web server is ready!"
+            exit 0
+          fi
+          echo "Web server is not ready yet. Waiting..."
+          sleep 5
+        done
+        echo "Web server did not become ready in time."
+        exit 1
+
+    - name: Install and build frontend
+      working-directory: frontend
+      run: |
+        npm ci
+        npm run build --silent
+
+    - name: Run tests
+      run: uv run pytest --cov --cov-branch --cov-report=xml
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage.xml
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: Tear down containers
+      if: always()
+      working-directory: infra
+      run: docker compose -f docker-compose.coverage-test.yml down
