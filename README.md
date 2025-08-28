@@ -9,6 +9,13 @@ A web application for collecting, storing, and visualizing logs of OpenCanary co
 
 ---
 
+<center><img alt="GitHub License" src="https://img.shields.io/github/license/shrunbr/wall-of-shame">&nbsp;<a href="https://codecov.io/github/shrunbr/wall-of-shame" > 
+ <img src="https://codecov.io/github/shrunbr/wall-of-shame/graph/badge.svg?token=MPP142GS2L"/></a>&nbsp;<img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/shrunbr/wall-of-shame/publish_container.yml?label=production-build">&nbsp;<img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/shrunbr/wall-of-shame/publish_container_nightly.yml?label=nightly-build">&nbsp;<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/shrunbr/wall-of-shame?display_timestamp=author">
+
+
+
+</center>
+
 ### Backend Flow
 
 ![Diagram depicting backend flow for the Wall of Shame](/docs/img/wos-backend-flow.png)
