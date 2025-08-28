@@ -9,13 +9,19 @@ A web application for collecting, storing, and visualizing logs of OpenCanary co
 
 ---
 
-<center>
-<img alt="GitHub License" src="https://img.shields.io/github/license/shrunbr/wall-of-shame">
-<a href="https://codecov.io/github/shrunbr/wall-of-shame" ><img src="https://codecov.io/github/shrunbr/wall-of-shame/graph/badge.svg?token=MPP142GS2L"/></a>
+<div align="center">
+
+<a href="https://github.com/shrunbr/wall-of-shame/blob/main/LICENSE">
+  <img alt="GitHub License" src="https://img.shields.io/github/license/shrunbr/wall-of-shame">
+</a>
+<a href="https://codecov.io/github/shrunbr/wall-of-shame">
+  <img src="https://codecov.io/github/shrunbr/wall-of-shame/graph/badge.svg?token=MPP142GS2L"/>
+</a>
 <img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/shrunbr/wall-of-shame/publish_container.yml?label=production-build">
 <img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/shrunbr/wall-of-shame/publish_container_nightly.yml?label=nightly-build">
 <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/shrunbr/wall-of-shame?display_timestamp=author">
-</center>
+
+</div>
 
 ### Backend Flow
 
