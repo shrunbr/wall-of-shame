@@ -5,7 +5,7 @@ on:
   - cron: '0 2 * * *' # Runs every day at 02:00 UTC
   push:
     branches:
-    - master
+    - main
 
 jobs:
   build-and-push:
@@ -42,4 +42,4 @@ jobs:
         push: true
         tags: |
           ghcr.io/${{ github.repository_owner }}/wall-of-shame:nightly
-          ghcr.io/${{ github.repository_owner }}/wall-of-shame:master
+          ghcr.io/${{ github.repository_owner }}/wall-of-shame:main
