@@ -606,8 +606,8 @@ async def get_stats(request: Request):
 
                 return JSONResponse(content=top_stats, status_code=200)
     except Exception as e:
-        logger.error(f"Failed to retrieve top stats: {e}")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        logger.error(f"Failed to retrieve stats: {e}")
+        return JSONResponse(content={"status": "error", "message": "Failed to retrieve stats"}, status_code=500)
 
 
 @app.get("/", include_in_schema=False)
