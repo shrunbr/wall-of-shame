@@ -13,7 +13,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
   app:
     container_name: wos-frontend
-    image: ghcr.io/shrunbr/wall-of-shame:0.1.0
+    image: ghcr.io/shrunbr/wall-of-shame:latest
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
