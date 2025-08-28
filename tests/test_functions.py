@@ -481,6 +481,15 @@ def test_schedule_geo_lookup_private_ip_not_scheduled(monkeypatch):
     if "fn" in added:
         assert added["args"][1] == "8.8.4.4"
 
+# ---------------------------------------------------------------------------
+# Tests: fetch_geo_async - checks geoip retreival function
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_fetch_geo_async(monkeypatch):
+    data = await main._fetch_geo_async("8.8.4.4")
+    assert data is not None
+    assert data["status"] == "success"
 
 # ---------------------------------------------------------------------------
 # Coverage for error branches (batch missing ips already done); add logs error branch simulation
