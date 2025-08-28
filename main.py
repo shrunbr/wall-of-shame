@@ -302,10 +302,11 @@ async def webhook(request: Request, background: BackgroundTasks):
                 try:
                     data = json.loads(form["message"])
                 except Exception as e:
+                    logging.error(f"Failed to parse form data: {e}")
                     return JSONResponse(
                         content={
                             "status": "error",
-                            "message": f"Failed to parse form data: {e}",
+                            "message": f"Failed to parse form data.",
                         },
                         status_code=400,
                     )
@@ -318,10 +319,11 @@ async def webhook(request: Request, background: BackgroundTasks):
                     status_code=400,
                 )
         except Exception as e:
+            logging.error(f"Failed to parse form data: {e}")
             return JSONResponse(
                 content={
                     "status": "error",
-                    "message": f"Failed to read form data: {e}",
+                    "message": f"Failed to read form data.",
                 },
                 status_code=400,
             )
@@ -604,8 +606,8 @@ async def get_stats(request: Request):
 
                 return JSONResponse(content=top_stats, status_code=200)
     except Exception as e:
-        logger.error(f"Failed to retrieve top stats: {e}")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        logger.error(f"Failed to retrieve stats: {e}")
+        return JSONResponse(content={"status": "error", "message": "Failed to retrieve stats"}, status_code=500)
 
 
 @app.get("/", include_in_schema=False)
@@ -615,11 +617,18 @@ async def _index():
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def _spa_fallback(full_path: str):
-    candidate = os.path.join(_build_dir, full_path)
-    # If the requested file exists in the build directory, return it (allows asset requests).
+    candidate = os.path.normpath(os.path.join(_build_dir, full_path))
+    if not candidate.startswith(os.path.abspath(_build_dir)):
+        # Invalid path: potential path traversal attempt
+        return JSONResponse(
+            content={"status": "error", "message": "Invalid file path."},
+            status_code=400
+        )
+
     if full_path and os.path.exists(candidate) and os.path.isfile(candidate):
         return FileResponse(candidate)
-    # Otherwise return index.html so the SPA client router can handle the path.
+    
+    # Return index.html so the SPA client router can handle the path.
     return FileResponse(os.path.join(_build_dir, "index.html"))
 
 
