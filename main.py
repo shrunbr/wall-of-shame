@@ -621,7 +621,7 @@ async def _spa_fallback(full_path: str):
     if not candidate.startswith(os.path.abspath(_build_dir)):
         # Invalid path: potential path traversal attempt
         return JSONResponse(
-            content={"error": "Invalid file path."},
+            content={"status": "error", "message": "Invalid file path."},
             status_code=400
         )
 
