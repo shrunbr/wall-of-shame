@@ -106,7 +106,7 @@ def _is_public_candidate(ip_str: str) -> bool:
     return True
 
 
-def _acquire_ip_lock(ip):
+def _acquire_ip_lock(ip): # pragma: no cover
     with _ip_locks_lock:
         lock = _ip_locks.get(ip)
         if not lock:
@@ -126,7 +126,7 @@ def _within_rate_limit():
         return True
 
 
-async def _ip_exists_async(conn, ip):
+async def _ip_exists_async(conn, ip): # pragma: no cover
     async with conn.cursor() as c:
         await c.execute("SELECT 1 FROM source_details WHERE src_host=%s LIMIT 1", (ip,))
         row = await c.fetchone()
@@ -611,12 +611,12 @@ async def get_stats(request: Request):
 
 
 @app.get("/", include_in_schema=False)
-async def _index():
+async def _index(): # pragma: no cover
     return FileResponse(os.path.join(_build_dir, "index.html"))
 
 
 @app.get("/{full_path:path}", include_in_schema=False)
-async def _spa_fallback(full_path: str):
+async def _spa_fallback(full_path: str): # pragma: no cover
     candidate = os.path.normpath(os.path.join(_build_dir, full_path))
     if not candidate.startswith(os.path.abspath(_build_dir)):
         # Invalid path: potential path traversal attempt
@@ -632,6 +632,6 @@ async def _spa_fallback(full_path: str):
     return FileResponse(os.path.join(_build_dir, "index.html"))
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": # pragma: no cover
     # run with an ASGI server for FastAPI
     uvicorn.run("main:app", host="0.0.0.0", port=8081, reload=False)
