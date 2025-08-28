@@ -13,9 +13,9 @@ def test_webhook_post():
       "utc_time": "2025-08-28T18:37:49.453Z",
       "logdata": {
         "LOCALVERSION": "1.0.0",
-        "PASSWORD": "password123",
+        "PASSWORD": "test_password",
         "REMOTEVERSION": "OpenSSH_8.4",
-        "USERNAME": "user123",
+        "USERNAME": "test_user",
         "SESSION": "abc123"
       }
     }
