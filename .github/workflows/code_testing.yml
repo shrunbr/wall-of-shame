@@ -34,7 +34,7 @@ jobs:
 
     - name: Startup containers
       working-directory: infra
-      run: docker-compose -f docker-compose.coverage-test.yml up -d
+      run: docker compose -f docker-compose.coverage-test.yml up -d
 
     - name: Wait for Postgres to be ready
       run: |
@@ -75,4 +75,4 @@ jobs:
     - name: Tear down containers
       if: always()
       working-directory: infra
-      run: docker-compose -f docker-compose.coverage-test.yml down
+      run: docker compose -f docker-compose.coverage-test.yml down
