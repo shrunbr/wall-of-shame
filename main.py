@@ -319,10 +319,11 @@ async def webhook(request: Request, background: BackgroundTasks):
                     status_code=400,
                 )
         except Exception as e:
+            logging.error(f"Failed to parse form data: {e}")
             return JSONResponse(
                 content={
                     "status": "error",
-                    "message": f"Failed to read form data: {e}",
+                    "message": f"Failed to read form data.",
                 },
                 status_code=400,
             )
