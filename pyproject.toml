@@ -1,6 +1,6 @@
 [project]
 name = "wall-of-shame"
-version = "0.1.0"
+version = "0.1.1"
 description = "A project for logging and shaming those who attempt to attack an OpenCanary instance."
 authors = [
     { name="shrunbr", email="shrunbr@shockmail.biz" }
