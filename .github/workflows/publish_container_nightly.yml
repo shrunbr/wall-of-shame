@@ -3,9 +3,8 @@ name: Nightly Build and Publish Frontend Docker Image
 on:
   schedule:
   - cron: '0 2 * * *' # Runs every day at 02:00 UTC
-  push:
-    branches:
-    - main
+  workflow_dispatch:
+
 
 jobs:
   build-and-push:
