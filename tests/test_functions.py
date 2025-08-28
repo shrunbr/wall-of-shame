@@ -482,7 +482,7 @@ def test_schedule_geo_lookup_private_ip_not_scheduled(monkeypatch):
         assert added["args"][1] == "8.8.4.4"
 
 # ---------------------------------------------------------------------------
-# Tests: fetch_geo_async - checks geoip retreival function
+# Tests: fetch_geo_async - checks geoip retrieval function
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
