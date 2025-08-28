@@ -1,0 +1,26 @@
+services:
+  postgres:
+    container_name: wos-postgres
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: coverage-test
+      POSTGRES_PASSWORD: justaCoveragetest123!
+      POSTGRES_DB: coverage_test_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d
+  
+  app:
+    container_name: wos-frontend
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_USER: coverage-test
+      POSTGRES_PASSWORD: justaCoveragetest123!
+      POSTGRES_DB: coverage_test_db
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    ports:
+      - "8081:8081"
