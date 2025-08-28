@@ -64,6 +64,12 @@ jobs:
         echo "Web server did not become ready in time."
         exit 1
 
+    - name: Install and build frontend
+      working-directory: frontend
+      run: |
+        npm ci
+        npm run build --silent
+
     - name: Run tests
       run: uv run pytest --cov=. --cov-report=xml tests/
 
