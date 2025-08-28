@@ -617,11 +617,18 @@ async def _index():
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def _spa_fallback(full_path: str):
-    candidate = os.path.join(_build_dir, full_path)
-    # If the requested file exists in the build directory, return it (allows asset requests).
+    candidate = os.path.normpath(os.path.join(_build_dir, full_path))
+    if not candidate.startswith(os.path.abspath(_build_dir)):
+        # Invalid path: potential path traversal attempt
+        return JSONResponse(
+            content={"error": "Invalid file path."},
+            status_code=400
+        )
+
     if full_path and os.path.exists(candidate) and os.path.isfile(candidate):
         return FileResponse(candidate)
-    # Otherwise return index.html so the SPA client router can handle the path.
+    
+    # Return index.html so the SPA client router can handle the path.
     return FileResponse(os.path.join(_build_dir, "index.html"))
 
 
