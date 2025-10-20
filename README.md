@@ -4,8 +4,7 @@
 A web application for collecting, storing, and visualizing logs of OpenCanary connection attempts.
 </p>
 
-<h3 align="center"><a href="https://wos-demo.shrunbr.dev" target="_blank">Want to see a demo? (All-in-One)</a></h3>
-<h3 align="center"><a href="https://shame.shrunbr.dev" target="_blank">Want to see a demo? (Distributed)</a></h3>
+<h3 align="center"><a href="https://wos-demo.shrunbr.dev" target="_blank">Want to see a demo?</a></h3>
 
 ---
 
